@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>沖繩自由行助手</title>
+    
+    <!-- Vue.js 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        okinawa: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9', // Ocean Blue
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                            sand: '#fffbeb', // Sand
+                            coral: '#f43f5e'  // Hibiscus
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #f3f4f6;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* Mobile app feel */
+        .app-container {
+            max-width: 480px;
+            margin: 0 auto;
+            min-height: 100vh;
+            background-color: white;
+            position: relative;
+            padding-bottom: 80px; /* Space for bottom nav */
+            box-shadow: 0 0 20px rgba(0,0,0,0.05);
+        }
+        .slide-enter-active, .slide-leave-active {
+            transition: all 0.3s ease;
+        }
+        .slide-enter-from {
+            opacity: 0;
+            transform: translateX(20px);
+        }
+        .slide-leave-to {
+            opacity: 0;
+            transform: translateX(-20px);
+        }
+    </style>
+</head>
+<body>
+
+<div id="app" class="app-container bg-gray-50 text-gray-800">
+
+    <!-- 頂部導航 -->
+    <header class="bg-gradient-to-r from-okinawa-500 to-teal-400 text-white p-4 sticky top-0 z-20 shadow-md rounded-b-2xl">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold tracking-wide"><i class="fa-solid fa-plane-departure mr-2"></i>沖繩自由行</h1>
+                <p class="text-xs opacity-90 text-white mt-1">{{ currentDateDisplay }}</p>
+            </div>
+            <div @click="showSettings = true" class="cursor-pointer bg-white/20 p-2 rounded-full hover:bg-white/30 transition">
+                <i class="fa-solid fa-gear"></i>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要內容區 -->
+    <main class="p-4 relative">
+        
+        <!-- Tab 1: 行程表 -->
+        <div v-if="currentTab === 'itinerary'" class="space-y-4">
+            
+            <!-- 日期選擇器 -->
+            <div class="flex overflow-x-auto hide-scrollbar gap-3 pb-2 sticky top-20 z-10 bg-gray-50/95 backdrop-blur-sm py-2">
+                <button 
+                    v-for="(day, index) in itinerary" 
+                    :key="index"
+                    @click="activeDayIndex = index"
+                    :class="activeDayIndex === index ? 'bg-okinawa-600 text-white shadow-lg scale-105' : 'bg-white text-gray-500 border border-gray-200'"
+                    class="flex-shrink-0 px-4 py-2 rounded-xl flex flex-col items-center min-w-[70px] transition-all duration-200"
+                >
+                    <span class="text-xs font-medium">Day {{ index + 1 }}</span>
+                    <span class="text-sm font-bold">{{ formatDateShort(day.date) }}</span>
+                </button>
+                <button @click="addDay" class="flex-shrink-0 px-3 py-2 rounded-xl bg-gray-200 text-gray-500">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+            </div>
+
+            <!-- 該日期的行程列表 -->
+            <div v-if="itinerary[activeDayIndex]" class="bg-white rounded-2xl p-4 shadow-sm min-h-[50vh]">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h2 class="font-bold text-lg text-gray-700">
+                        {{ itinerary[activeDayIndex].date }} 
+                    </h2>
+                    <div class="flex gap-2">
+                         <button @click="editDayDate(activeDayIndex)" class="text-gray-400 hover:text-okinawa-600"><i class="fa-solid fa-pen"></i></button>
+                         <button @click="deleteDay(activeDayIndex)" class="text-gray-400 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+
+                <div class="relative pl-4 border-l-2 border-gray-100 space-y-6">
+                    <div v-if="itinerary[activeDayIndex].events.length === 0" class="text-center py-8 text-gray-400">
+                        <i class="fa-regular fa-calendar-plus text-3xl mb-2"></i>
+                        <p>還沒有安排行程喔！</p>
+                    </div>
+
+                    <div v-for="(event, eIndex) in itinerary[activeDayIndex].events" :key="eIndex" class="relative group">
+                        <!-- Timeline Dot -->
+                        <div class="absolute -left-[25px] top-1 w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                            :class="getIconColor(event.type)"></div>
+                        
+                        <!-- Event Card -->
+                        <div class="bg-gray-50 hover:bg-white p-3 rounded-xl border border-transparent hover:border-gray-200 hover:shadow-md transition-all cursor-pointer" @click="openEditEventModal(activeDayIndex, eIndex)">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <span class="inline-block px-2 py-0.5 rounded text-xs font-bold text-white mb-1" :class="getIconColor(event.type)">
+                                        {{ event.time }}
+                                    </span>
+                                    <h3 class="font-bold text-gray-800">{{ event.title }}</h3>
+                                    <p class="text-sm text-gray-500 mt-1"><i class="fa-solid fa-location-dot mr-1 text-red-400"></i>{{ event.location }}</p>
+                                </div>
+                                <div class="flex flex-col gap-2">
+                                    <a :href="getGoogleMapsLink(event.location)" target="_blank" @click.stop class="bg-blue-100 text-blue-600 p-2 rounded-full w-8 h-8 flex items-center justify-center hover:bg-blue-200">
+                                        <i class="fa-solid fa-location-arrow text-xs"></i>
+                                    </a>
+                                </div>
+                            </div>
+                            <p v-if="event.note" class="text-xs text-gray-400 mt-2 bg-yellow-50 p-2 rounded border border-yellow-100">
+                                <i class="fa-regular fa-note-sticky mr-1"></i>{{ event.note }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <button @click="openAddEventModal" class="w-full mt-6 py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 hover:border-okinawa-500 hover:text-okinawa-500 transition font-medium">
+                    <i class="fa-solid fa-plus mr-2"></i>新增行程
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab 2: 分帳系統 -->
+        <div v-else-if="currentTab === 'expense'" class="space-y-4">
+            <!-- 結算卡片 -->
+            <div class="bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden">
+                <div class="absolute -right-10 -top-10 bg-white/10 w-40 h-40 rounded-full blur-2xl"></div>
+                <h2 class="text-sm font-medium opacity-80 mb-1">總支出</h2>
+                <div class="text-3xl font-bold mb-4">NT$ {{ formatMoney(totalExpense) }}</div>
+                
+                <div v-if="members.length > 0" class="space-y-2">
+                    <div class="text-xs font-bold uppercase opacity-60 tracking-wider mb-2">建議結算 (誰給誰)</div>
+                    <div v-if="debts.length === 0" class="text-sm opacity-80">目前帳務平衡，太棒了！</div>
+                    <div v-for="(debt, i) in debts" :key="i" class="flex items-center justify-between bg-white/10 p-2 rounded text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-red-200">{{ debt.from }}</span>
+                            <i class="fa-solid fa-arrow-right text-xs opacity-50"></i>
+                            <span class="font-bold text-green-200">{{ debt.to }}</span>
+                        </div>
+                        <span class="font-mono font-bold">NT$ {{ formatMoney(debt.amount) }}</span>
+                    </div>
+                </div>
+                <div v-else class="text-sm bg-white/20 p-2 rounded text-center">
+                    請先到設定新增成員
+                </div>
+            </div>
+
+            <!-- 記帳列表 -->
+            <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+                <div class="p-4 border-b flex justify-between items-center">
+                    <h3 class="font-bold text-gray-700">最近支出</h3>
+                    <span class="text-xs text-gray-400">{{ expenses.length }} 筆記錄</span>
+                </div>
+                <div class="max-h-[50vh] overflow-y-auto">
+                    <div v-if="expenses.length === 0" class="p-8 text-center text-gray-400">
+                        <i class="fa-solid fa-receipt text-3xl mb-2"></i>
+                        <p>還沒有記帳喔</p>
+                    </div>
+                    <div v-for="(exp, index) in expenses" :key="index" class="p-4 border-b last:border-0 flex justify-between items-center hover:bg-gray-50">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-orange-100 text-orange-500 flex items-center justify-center font-bold text-lg">
+                                {{ exp.payer.charAt(0) }}
+                            </div>
+                            <div>
+                                <p class="font-bold text-gray-800">{{ exp.item }}</p>
+                                <p class="text-xs text-gray-500">{{ exp.payer }} 付款 · {{ formatDate(exp.date) }}</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-gray-800">NT$ {{ formatMoney(exp.amount) }}</p>
+                            <button @click="deleteExpense(index)" class="text-xs text-red-400 mt-1">刪除</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button @click="openAddExpenseModal" class="fixed bottom-24 right-4 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg shadow-indigo-500/30 flex items-center justify-center text-xl hover:scale-110 transition active:scale-95 z-30">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+        </div>
+
+        <!-- Tab 3: 地圖導航 -->
+        <div v-else-if="currentTab === 'map'" class="space-y-4">
+            <div class="bg-white rounded-2xl p-4 shadow-sm">
+                <h2 class="font-bold text-lg mb-2">地圖概覽</h2>
+                <p class="text-sm text-gray-500 mb-4">點擊下方按鈕開啟 Google Maps 導航</p>
+                <div class="grid grid-cols-1 gap-3">
+                    <a href="https://www.google.com/maps/search/?api=1&query=沖繩" target="_blank" 
+                       class="flex items-center justify-between p-4 border rounded-xl hover:bg-blue-50 hover:border-blue-200 transition">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-map-location-dot text-2xl text-blue-500"></i>
+                            <span class="font-bold">探索沖繩全圖</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-gray-400"></i>
+                    </a>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 shadow-sm">
+                <h2 class="font-bold text-lg mb-4">行程地點快速導航</h2>
+                <div class="space-y-3">
+                    <div v-for="loc in allLocations" :key="loc.id" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                            <div class="w-2 h-8 rounded-full bg-okinawa-500 flex-shrink-0"></div>
+                            <div class="truncate">
+                                <p class="font-bold text-sm truncate">{{ loc.name }}</p>
+                                <p class="text-xs text-gray-400">Day {{ loc.dayIndex + 1 }}</p>
+                            </div>
+                        </div>
+                        <a :href="getGoogleMapsLink(loc.name)" target="_blank" class="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-blue-600 hover:bg-blue-50">
+                            導航
+                        </a>
+                    </div>
+                    <div v-if="allLocations.length === 0" class="text-center text-gray-400 py-4">
+                        行程中還沒有新增地點喔
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 底部導航欄 -->
+    <nav class="fixed bottom-0 left-0 w-full bg-white border-t border-gray-100 flex justify-around py-3 pb-6 z-40 max-w-[480px] left-1/2 -translate-x-1/2">
+        <button @click="currentTab = 'itinerary'" :class="currentTab === 'itinerary' ? 'text-okinawa-600' : 'text-gray-400'" class="flex flex-col items-center gap-1 transition-colors">
+            <i class="fa-solid fa-suitcase-rolling text-xl"></i>
+            <span class="text-[10px] font-medium">行程</span>
+        </button>
+        <button @click="currentTab = 'expense'" :class="currentTab === 'expense' ? 'text-indigo-600' : 'text-gray-400'" class="flex flex-col items-center gap-1 transition-colors">
+            <i class="fa-solid fa-file-invoice-dollar text-xl"></i>
+            <span class="text-[10px] font-medium">分帳</span>
+        </button>
+        <button @click="currentTab = 'map'" :class="currentTab === 'map' ? 'text-green-600' : 'text-gray-400'" class="flex flex-col items-center gap-1 transition-colors">
+            <i class="fa-solid fa-map text-xl"></i>
+            <span class="text-[10px] font-medium">導航</span>
+        </button>
+    </nav>
+
+    <!-- MODAL: 新增/編輯行程 -->
+    <div v-if="showEventModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" @click.self="closeEventModal">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-bounce-in">
+            <h3 class="text-lg font-bold mb-4">{{ isEditingEvent ? '編輯行程' : '新增行程' }}</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">時間</label>
+                    <input type="time" v-model="eventForm.time" class="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-okinawa-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">類型</label>
+                    <div class="flex gap-2">
+                        <button v-for="type in ['spot', 'food', 'hotel', 'shop']" :key="type"
+                            @click="eventForm.type = type"
+                            :class="eventForm.type === type ? getIconColor(type) : 'bg-gray-100 text-gray-400'"
+                            class="flex-1 py-2 rounded-lg text-sm font-medium transition"
+                        >
+                            {{ getTypeName(type) }}
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">標題</label>
+                    <input type="text" v-model="eventForm.title" placeholder="例如：美麗海水族館" class="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-okinawa-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">地點 (用於導航)</label>
+                    <input type="text" v-model="eventForm.location" placeholder="輸入具體地點名稱" class="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-okinawa-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">備註</label>
+                    <textarea v-model="eventForm.note" placeholder="門票價格、注意事項..." rows="2" class="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-okinawa-500"></textarea>
+                </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button v-if="isEditingEvent" @click="deleteEvent" class="px-4 py-2.5 text-red-500 bg-red-50 rounded-xl font-bold text-sm">刪除</button>
+                <button @click="closeEventModal" class="flex-1 px-4 py-2.5 text-gray-500 font-bold text-sm">取消</button>
+                <button @click="saveEvent" class="flex-1 px-4 py-2.5 bg-okinawa-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/30">儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: 新增支出 -->
+    <div v-if="showExpenseModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" @click.self="showExpenseModal = false">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+            <h3 class="text-lg font-bold mb-4">記一筆</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">項目</label>
+                    <input type="text" v-model="expenseForm.item" placeholder="例如：燒肉晚餐" class="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">金額 (TWD)</label>
+                    <input type="number" v-model="expenseForm.amount" class="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xl font-bold text-indigo-600">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">誰付的錢？</label>
+                    <select v-model="expenseForm.payer" class="w-full bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <option v-for="m in members" :key="m" :value="m">{{ m }}</option>
+                    </select>
+                </div>
+                <div v-if="members.length === 0" class="text-xs text-red-400">
+                    請先到設定頁面新增成員！
+                </div>
+            </div>
+            <button @click="saveExpense" class="w-full mt-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30">
+                新增支出
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL: 設定 (成員管理) -->
+    <div v-if="showSettings" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" @click.self="showSettings = false">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl h-[70vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold">旅伴與設定</h3>
+                <button @click="showSettings = false" class="text-gray-400"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto space-y-6">
+                <!-- 成員 -->
+                <section>
+                    <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">旅伴名單 (用於分帳)</h4>
+                    <div class="flex flex-wrap gap-2 mb-2">
+                        <div v-for="(m, i) in members" :key="i" class="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-2">
+                            {{ m }}
+                            <button @click="removeMember(i)" class="text-indigo-400 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="text" v-model="newMemberName" placeholder="輸入名字" class="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm" @keyup.enter="addMember">
+                        <button @click="addMember" class="bg-gray-800 text-white px-4 rounded-lg text-sm font-bold">新增</button>
+                    </div>
+                </section>
+
+                <!-- 資料管理 -->
+                <section>
+                    <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">資料管理</h4>
+                    <button @click="resetAllData" class="w-full py-3 border border-red-200 text-red-500 rounded-xl text-sm font-bold hover:bg-red-50">
+                        清除所有資料 (重置)
+                    </button>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div v-if="toast.show" class="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-800/90 text-white px-4 py-2 rounded-full text-sm shadow-xl z-[60] transition-opacity duration-300">
+        {{ toast.message }}
+    </div>
+
+</div>
+
+<script>
+    const { createApp, ref, computed, onMounted, watch } = Vue;
+
+    createApp({
+        setup() {
+            // --- State ---
+            const currentTab = ref('itinerary');
+            const showSettings = ref(false);
+            const showEventModal = ref(false);
+            const showExpenseModal = ref(false);
+            
+            // Itinerary Data
+            const activeDayIndex = ref(0);
+            const itinerary = ref([
+                { date: '2025-06-01', events: [] },
+                { date: '2025-06-02', events: [] },
+                { date: '2025-06-03', events: [] }
+            ]);
+
+            // Expenses Data
+            const members = ref(['我', '旅伴A']);
+            const expenses = ref([]);
+            
+            // Forms
+            const eventForm = ref({ time: '10:00', title: '', location: '', note: '', type: 'spot' });
+            const expenseForm = ref({ item: '', amount: '', payer: '' });
+            const newMemberName = ref('');
+            
+            // Editing state
+            const isEditingEvent = ref(false);
+            const editingIndices = ref({ d: -1, e: -1 });
+
+            // Toast
+            const toast = ref({ show: false, message: '' });
+
+            // --- Computed ---
+            const currentDateDisplay = computed(() => {
+                const now = new Date();
+                return `${now.getFullYear()}.${now.getMonth()+1}.${now.getDate()}`;
+            });
+
+            const totalExpense = computed(() => {
+                return expenses.value.reduce((sum, item) => sum + Number(item.amount), 0);
+            });
+
+            const debts = computed(() => {
+                if (members.value.length === 0) return [];
+                
+                // 1. Calculate balance per person
+                let balances = {};
+                members.value.forEach(m => balances[m] = 0);
+                
+                expenses.value.forEach(exp => {
+                    const amount = Number(exp.amount);
+                    const payer = exp.payer;
+                    if(balances[payer] !== undefined) {
+                        balances[payer] += amount; // 他付了錢，所以正數
+                    }
+                    
+                    // 預設是均分
+                    const share = amount / members.value.length;
+                    members.value.forEach(m => {
+                         balances[m] -= share; // 每個人都欠這筆錢的份額
+                    });
+                });
+
+                // 2. Settlement
+                let debtors = [];
+                let creditors = [];
+                
+                for (const [name, amount] of Object.entries(balances)) {
+                    if (amount < -1) debtors.push({ name, amount }); // 欠錢的
+                    if (amount > 1) creditors.push({ name, amount }); // 該收錢的
+                }
+
+                debtors.sort((a, b) => a.amount - b.amount); // 欠最多的排前面
+                creditors.sort((a, b) => b.amount - a.amount); // 收最多的排前面
+
+                let result = [];
+                let i = 0; // debtor index
+                let j = 0; // creditor index
+
+                while (i < debtors.length && j < creditors.length) {
+                    let debtor = debtors[i];
+                    let creditor = creditors[j];
+                    
+                    // 取兩者絕對值最小的金額來結算
+                    let amount = Math.min(Math.abs(debtor.amount), creditor.amount);
+                    
+                    result.push({
+                        from: debtor.name,
+                        to: creditor.name,
+                        amount: Math.round(amount)
+                    });
+
+                    debtor.amount += amount;
+                    creditor.amount -= amount;
+
+                    if (Math.abs(debtor.amount) < 1) i++;
+                    if (creditor.amount < 1) j++;
+                }
+                
+                return result;
+            });
+
+            const allLocations = computed(() => {
+                let locs = [];
+                itinerary.value.forEach((day, dIdx) => {
+                    day.events.forEach((evt, eIdx) => {
+                        if(evt.location) {
+                            locs.push({
+                                id: `${dIdx}-${eIdx}`,
+                                name: evt.location,
+                                dayIndex: dIdx
+                            });
+                        }
+                    });
+                });
+                return locs;
+            });
+
+            // --- Methods ---
+
+            // Utils
+            const showToast = (msg) => {
+                toast.value = { show: true, message: msg };
+                setTimeout(() => toast.value.show = false, 2000);
+            };
+            
+            const formatDateShort = (dateStr) => {
+                const d = new Date(dateStr);
+                return `${d.getMonth()+1}/${d.getDate()}`;
+            };
+
+            const formatDate = (dateStr) => {
+                return new Date().toLocaleDateString(); // Simplified for demo
+            };
+
+            const formatMoney = (val) => {
+                return Number(val).toLocaleString();
+            };
+
+            const getGoogleMapsLink = (location) => {
+                return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location + ' 沖繩')}`;
+            };
+
+            const getIconColor = (type) => {
+                const map = {
+                    'spot': 'bg-blue-500 text-white',
+                    'food': 'bg-orange-400 text-white',
+                    'hotel': 'bg-purple-500 text-white',
+                    'shop': 'bg-pink-500 text-white'
+                };
+                return map[type] || 'bg-gray-400';
+            };
+            
+            const getTypeName = (type) => {
+                const map = { 'spot': '景點', 'food': '美食', 'hotel': '住宿', 'shop': '購物' };
+                return map[type];
+            }
+
+            // Itinerary Logic
+            const addDay = () => {
+                const lastDay = itinerary.value.length > 0 
+                    ? new Date(itinerary.value[itinerary.value.length-1].date)
+                    : new Date();
+                lastDay.setDate(lastDay.getDate() + 1);
+                
+                itinerary.value.push({
+                    date: lastDay.toISOString().split('T')[0],
+                    events: []
+                });
+                activeDayIndex.value = itinerary.value.length - 1;
+            };
+
+            const deleteDay = (index) => {
+                if(confirm('確定要刪除這整天的行程嗎？')) {
+                    itinerary.value.splice(index, 1);
+                    if(activeDayIndex.value >= itinerary.value.length) {
+                        activeDayIndex.value = Math.max(0, itinerary.value.length - 1);
+                    }
+                }
+            };
+            
+            const editDayDate = (index) => {
+                const newDate = prompt("修改日期 (YYYY-MM-DD)", itinerary.value[index].date);
+                if(newDate) itinerary.value[index].date = newDate;
+            };
+
+            const openAddEventModal = () => {
+                isEditingEvent.value = false;
+                eventForm.value = { time: '10:00', title: '', location: '', note: '', type: 'spot' };
+                showEventModal.value = true;
+            };
+
+            const openEditEventModal = (dIdx, eIdx) => {
+                isEditingEvent.value = true;
+                editingIndices.value = { d: dIdx, e: eIdx };
+                // Copy data
+                eventForm.value = { ...itinerary.value[dIdx].events[eIdx] };
+                showEventModal.value = true;
+            };
+
+            const saveEvent = () => {
+                if(!eventForm.value.title) {
+                    showToast('請輸入標題');
+                    return;
+                }
+                
+                if(isEditingEvent.value) {
+                    itinerary.value[editingIndices.value.d].events[editingIndices.value.e] = { ...eventForm.value };
+                    showToast('已更新行程');
+                } else {
+                    itinerary.value[activeDayIndex.value].events.push({ ...eventForm.value });
+                    // Sort by time
+                    itinerary.value[activeDayIndex.value].events.sort((a,b) => a.time.localeCompare(b.time));
+                    showToast('已新增行程');
+                }
+                showEventModal.value = false;
+            };
+
+            const deleteEvent = () => {
+                if(confirm('確定刪除？')) {
+                    itinerary.value[editingIndices.value.d].events.splice(editingIndices.value.e, 1);
+                    showEventModal.value = false;
+                    showToast('已刪除');
+                }
+            };
+            
+            const closeEventModal = () => showEventModal.value = false;
+
+            // Expense Logic
+            const openAddExpenseModal = () => {
+                expenseForm.value = { item: '', amount: '', payer: members.value[0] || '' };
+                showExpenseModal.value = true;
+            };
+
+            const saveExpense = () => {
+                if(!expenseForm.value.item || !expenseForm.value.amount || !expenseForm.value.payer) {
+                    showToast('資料不完整');
+                    return;
+                }
+                expenses.value.unshift({
+                    ...expenseForm.value,
+                    date: new Date().toISOString()
+                });
+                showExpenseModal.value = false;
+                showToast('記帳成功');
+            };
+
+            const deleteExpense = (index) => {
+                if(confirm('刪除此筆支出？')) {
+                    expenses.value.splice(index, 1);
+                }
+            };
+
+            // Settings Logic
+            const addMember = () => {
+                if(newMemberName.value && !members.value.includes(newMemberName.value)) {
+                    members.value.push(newMemberName.value);
+                    newMemberName.value = '';
+                }
+            };
+
+            const removeMember = (index) => {
+                if(confirm('移除成員可能會影響舊的帳務計算，確定嗎？')) {
+                    members.value.splice(index, 1);
+                }
+            };
+
+            const resetAllData = () => {
+                if(confirm('警告：這將會清除所有行程和帳務資料，無法復原！')) {
+                    localStorage.removeItem('okinawa_trip_data');
+                    location.reload();
+                }
+            };
+
+            // Persistence
+            const loadData = () => {
+                const saved = localStorage.getItem('okinawa_trip_data');
+                if(saved) {
+                    const data = JSON.parse(saved);
+                    itinerary.value = data.itinerary || [];
+                    expenses.value = data.expenses || [];
+                    members.value = data.members || ['我'];
+                    if(itinerary.value.length === 0) addDay(); // Ensure at least 1 day
+                } else {
+                    // Init default data
+                    itinerary.value = [
+                        { 
+                            date: '2025-06-01', 
+                            events: [
+                                { time: '10:00', title: '那霸機場抵達', location: '那霸機場', type: 'spot', note: '領車、買Sim卡' },
+                                { time: '12:30', title: '暖暮拉麵', location: '暖暮拉麵 那霸牧志店', type: 'food', note: '可能要排隊' },
+                                { time: '15:00', title: '波上宮', location: '波上宮', type: 'spot', note: '拍照、買御守' }
+                            ] 
+                        }
+                    ];
+                }
+            };
+
+            onMounted(() => {
+                loadData();
+            });
+
+            watch([itinerary, expenses, members], () => {
+                localStorage.setItem('okinawa_trip_data', JSON.stringify({
+                    itinerary: itinerary.value,
+                    expenses: expenses.value,
+                    members: members.value
+                }));
+            }, { deep: true });
+
+            return {
+                currentTab, showSettings, showEventModal, showExpenseModal,
+                itinerary, activeDayIndex, members, expenses, 
+                eventForm, expenseForm, newMemberName,
+                isEditingEvent,
+                currentDateDisplay, totalExpense, debts, allLocations, toast,
+                
+                formatDateShort, formatDate, formatMoney, getGoogleMapsLink, getIconColor, getTypeName,
+                addDay, deleteDay, editDayDate,
+                openAddEventModal, openEditEventModal, saveEvent, deleteEvent, closeEventModal,
+                openAddExpenseModal, saveExpense, deleteExpense,
+                addMember, removeMember, resetAllData
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
