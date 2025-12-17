@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>沖繩單人旅費通 (含雙幣別結算)</title>
+    
+    <!-- Vue.js 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        okinawa: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                        },
+                        converter: {
+                            main: '#047857',
+                            light: '#d1fae5',
+                        },
+                        finance: {
+                            main: '#4f46e5', // Indigo
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .app-container { max-width: 480px; margin: 0 auto; min-height: 100vh; background-color: white; padding-bottom: 80px; box-shadow: 0 0 20px rgba(0,0,0,0.05); }
+        .loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.8); backdrop-filter: blur(5px); z-index: 100; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+        .animate-bounce-in { animation: bounceIn 0.3s ease-out forwards; }
+        @keyframes bounceIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+<div id="app" class="app-container bg-gray-50 text-gray-800 relative">
+
+    <!-- LOADING OVERLAY (僅用於匯率查詢) -->
+    <div v-if="loadingApi" class="loading-overlay z-[100] fixed inset-0">
+        <i class="fa-solid fa-sync fa-spin text-4xl text-converter-main mb-4"></i>
+        <p class="font-bold text-gray-700">正在查詢台灣銀行最新匯率...</p>
+        <p class="text-sm text-gray-500 mt-2">請稍候</p>
+    </div>
+
+    <!-- MAIN APP CONTENT -->
+    <div>
+        
+        <!-- 頂部導航 -->
+        <header class="bg-gradient-to-r from-okinawa-500 to-teal-400 text-white p-4 sticky top-0 z-20 shadow-md rounded-b-2xl">
+            <div class="flex justify-between items-center">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-xl font-bold tracking-wide">沖繩旅遊</h1>
+                        <span class="bg-white/20 text-xs px-2 py-0.5 rounded text-white/90">LOCAL SAVE</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span class="text-xs opacity-90">資料儲存於本機瀏覽器</span>
+                    </div>
+                </div>
+                <div @click="showSettings = true" class="cursor-pointer bg-white/20 p-2 rounded-full hover:bg-white/30 transition relative">
+                    <i class="fa-solid fa-user-group"></i>
+                </div>
+            </div>
+        </header>
+
+        <main class="p-4 relative min-h-[calc(100vh-160px)]">
+            
+            <!-- Tab 1: 行程表 -->
+            <div v-if="currentTab === 'itinerary'" class="space-y-4">
+                <!-- 日期選擇 -->
+                <div class="flex overflow-x-auto hide-scrollbar gap-3 pb-2 sticky top-[72px] z-10 bg-gray-50/95 backdrop-blur-sm py-2">
+                    <button v-for="(day, index) in tripData.itinerary" :key="index" @click="activeDayIndex = index"
+                        :class="activeDayIndex === index ? 'bg-okinawa-600 text-white shadow-lg scale-105' : 'bg-white text-gray-500 border border-gray-200'"
+                        class="flex-shrink-0 px-4 py-2 rounded-xl flex flex-col items-center min-w-[70px] transition-all">
+                        <span class="text-xs font-medium">Day {{ index + 1 }}</span>
+                        <span class="text-sm font-bold">{{ formatDateShort(day.date) }}</span>
+                    </button>
+                    <button @click="addDay" class="flex-shrink-0 px-3 py-2 rounded-xl bg-gray-200 text-gray-500">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+
+                <!-- 行程列表 -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm min-h-[50vh]">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2">
+                        <h2 class="font-bold text-lg text-gray-700">{{ tripData.itinerary[activeDayIndex]?.date }}</h2>
+                        <div class="flex gap-2">
+                            <button @click="editDayDate(activeDayIndex)" class="text-gray-400 hover:text-okinawa-600"><i class="fa-solid fa-pen"></i></button>
+                            <button @click="deleteDay(activeDayIndex)" class="text-gray-400 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="relative pl-4 border-l-2 border-gray-100 space-y-6">
+                        <div v-if="!tripData.itinerary[activeDayIndex]?.events.length" class="text-center py-8 text-gray-400">
+                            <p>點擊下方按鈕安排行程</p>
+                        </div>
+                        <div v-for="(event, eIndex) in tripData.itinerary[activeDayIndex]?.events" :key="eIndex" class="relative group">
+                            <div class="absolute -left-[25px] top-1 w-4 h-4 rounded-full border-2 border-white shadow-sm" :class="getIconColor(event.type)"></div>
+                            <div class="bg-gray-50 hover:bg-white p-3 rounded-xl border border-transparent hover:border-gray-200 hover:shadow-md transition-all cursor-pointer" @click="openEditEventModal(activeDayIndex, eIndex)">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <span class="inline-block px-2 py-0.5 rounded text-xs font-bold text-white mb-1" :class="getIconColor(event.type)">
+                                            {{ event.time }}
+                                        </span>
+                                        <h3 class="font-bold text-gray-800">{{ event.title }}</h3>
+                                        <p class="text-sm text-gray-500 mt-1"><i class="fa-solid fa-location-dot mr-1 text-red-400"></i>{{ event.location }}</p>
+                                    </div>
+                                    <a :href="getGoogleMapsLink(event.location)" target="_blank" @click.stop class="bg-blue-100 text-blue-600 p-2 rounded-full w-8 h-8 flex items-center justify-center">
+                                        <i class="fa-solid fa-location-arrow text-xs"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button @click="openAddEventModal" class="w-full mt-6 py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 hover:border-okinawa-500 hover:text-okinawa-500 transition font-medium">
+                        <i class="fa-solid fa-plus mr-2"></i>新增行程
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 2: 財政 (匯率、記帳與結算) -->
+            <div v-else-if="currentTab === 'finance'" class="space-y-6">
+                
+                <!-- Sub-Tab Navigation (小頁籤) -->
+                <div class="flex overflow-x-auto hide-scrollbar gap-2 pb-2 sticky top-[72px] z-10 bg-gray-50/95 backdrop-blur-sm pt-2">
+                    <button @click="currentFinanceSubTab = 'overview'" 
+                        :class="currentFinanceSubTab === 'overview' ? 'bg-finance-main text-white shadow-lg' : 'bg-white text-gray-500 border border-gray-200'"
+                        class="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all">
+                        <i class="fa-solid fa-chart-pie mr-1"></i>總覽與換算
+                    </button>
+                    <button @click="currentFinanceSubTab = 'settlement'" 
+                        :class="currentFinanceSubTab === 'settlement' ? 'bg-finance-main text-white shadow-lg' : 'bg-white text-gray-500 border border-gray-200'"
+                        class="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all">
+                        <i class="fa-solid fa-handshake-angle mr-1"></i>分帳結算
+                    </button>
+                    <button @click="currentFinanceSubTab = 'expenses'" 
+                        :class="currentFinanceSubTab === 'expenses' ? 'bg-finance-main text-white shadow-lg' : 'bg-white text-gray-500 border border-gray-200'"
+                        class="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all">
+                        <i class="fa-solid fa-receipt mr-1"></i>記帳明細
+                    </button>
+                    <button @click="currentFinanceSubTab = 'rates'" 
+                        :class="currentFinanceSubTab === 'rates' ? 'bg-finance-main text-white shadow-lg' : 'bg-white text-gray-500 border border-gray-200'"
+                        class="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all">
+                        <i class="fa-solid fa-money-bill-transfer mr-1"></i>匯率管理
+                    </button>
+                </div>
+
+                <!-- Sub-Tab Content Area -->
+                <div class="space-y-6 pt-2">
+                    
+                    <!-- Tab: 總覽與換算 (Overview) -->
+                    <div v-if="currentFinanceSubTab === 'overview'" class="space-y-6">
+                        
+                        <!-- 匯率轉換器 -->
+                        <div class="bg-white rounded-2xl p-5 shadow-xl border-t-4 border-converter-main">
+                            <h2 class="text-xl font-bold text-gray-800 mb-4 flex justify-between items-center">
+                                匯率管理與換算
+                            </h2>
+                            
+                            <!-- 輸入金額與幣別 -->
+                            <div class="flex items-center gap-3">
+                                <input type="number" v-model.number="conversionForm.amount" placeholder="輸入金額" class="w-full bg-gray-100 border-none rounded-xl p-4 text-xl font-bold text-converter-main focus:ring-2 focus:ring-converter-main focus:outline-none">
+                                <select v-model="conversionForm.currency" class="bg-gray-200 text-gray-700 font-bold p-4 rounded-xl flex-shrink-0 focus:ring-2 focus:ring-converter-main">
+                                    <option value="JPY">🇯🇵 JPY</option>
+                                    <option value="TWD">🇹🇼 TWD</option>
+                                </select>
+                            </div>
+
+                            <!-- 轉換結果 -->
+                            <div class="text-center my-6">
+                                <i class="fa-solid fa-down-long text-3xl text-gray-300 transform rotate-45"></i>
+                            </div>
+
+                            <div class="bg-converter-light p-4 rounded-xl border border-converter-main/20">
+                                <p class="text-sm text-converter-main/80 font-bold mb-1">
+                                    {{ conversionForm.currency === 'JPY' ? '預估台幣 (TWD)' : '預估日幣 (JPY)' }}
+                                </p>
+                                <p class="text-3xl font-extrabold text-converter-main">
+                                    {{ formatMoney(convertedAmount) }} 
+                                    <span class="text-xl font-medium">{{ conversionForm.currency === 'JPY' ? 'TWD' : 'JPY' }}</span>
+                                </p>
+                            </div>
+                            
+                            <!-- 目前使用的匯率 -->
+                            <p class="text-xs text-gray-500 mt-4 text-center">
+                                當前匯率 (1 JPY = ? TWD): 
+                                <span class="font-bold text-converter-main">{{ tripData.settings.currentRate.toFixed(4) }}</span>
+                            </p>
+
+                            <button @click="fetchLiveExchangeRate" :disabled="loadingApi" class="w-full mt-3 py-2 bg-green-600 text-white rounded-xl font-bold shadow-md hover:bg-green-700 transition disabled:opacity-50 text-sm">
+                                <i :class="{'fa-spin': loadingApi}" class="fa-solid fa-sync mr-2"></i>
+                                {{ loadingApi ? '查詢中...' : '獲取台灣銀行最新匯率 (現金賣出)' }}
+                            </button>
+                        </div>
+
+                        <!-- 總支出概覽 -->
+                        <div class="bg-white rounded-2xl p-5 shadow-sm border-t-4 border-gray-400">
+                            <h3 class="font-bold text-xl text-gray-800 border-b pb-2 flex justify-between items-center">
+                                <i class="fa-solid fa-money-bill-wave mr-2 text-gray-400"></i>
+                                總支出概覽
+                            </h3>
+                            <div class="flex justify-between items-center text-lg p-3 rounded-xl bg-gray-100 shadow-inner mt-4">
+                                <span class="font-bold text-gray-700">總支出 (TWD 估算)</span>
+                                <span class="font-extrabold text-finance-main">NT$ {{ formatMoney(totalExpenseTWD) }}</span>
+                            </div>
+                            <button @click="openAddExpenseModal" class="w-full mt-4 bg-finance-main text-white px-3 py-2 rounded-xl text-sm font-bold shadow-md hover:bg-finance-main/90 transition">
+                                <i class="fa-solid fa-plus mr-1"></i>新增一筆記帳
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tab: 分帳結算 (Settlement) -->
+                    <div v-else-if="currentFinanceSubTab === 'settlement'" class="space-y-6">
+                        
+                        <!-- 分帳結算 -->
+                        <div class="bg-white rounded-2xl p-5 shadow-sm space-y-4 border-t-4 border-red-500">
+                            <h3 class="font-bold text-xl text-gray-800 border-b pb-2 flex justify-between items-center">
+                                <i class="fa-solid fa-handshake-angle mr-2 text-red-500"></i>
+                                分帳結算 (TWD & JPY)
+                            </h3>
+                            
+                            <div v-if="tripData.members.length > 1 && totalExpenseTWD > 0" class="space-y-3">
+                                
+                                <!-- 結算總表 (淨餘額) -->
+                                <div class="bg-red-50 p-3 rounded-xl shadow-inner">
+                                    <p class="text-sm font-bold text-red-700 mb-2">成員淨餘額 (總付 - 總攤)</p>
+                                    <div v-for="(balance, member) in memberBalances" :key="member" class="flex justify-between items-center py-1">
+                                        <span class="font-medium text-gray-700">{{ member }}</span>
+                                        <div class="text-right">
+                                            <!-- 顯示 TWD 淨餘額 (基礎結算貨幣) -->
+                                            <p class="font-bold text-lg" :class="balance >= 0 ? 'text-green-600' : 'text-red-500'">
+                                                NT$ {{ balance >= 0 ? '+' : '' }}{{ formatMoney(balance) }}
+                                            </p>
+                                            <!-- 顯示 JPY 預估值 -->
+                                            <p class="text-xs text-gray-400">
+                                                ≈ JPY {{ balance >= 0 ? '+' : '' }}{{ formatMoney(twdToJpy(balance)) }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 結算清單 (誰給誰) -->
+                                <div class="border-t pt-3 border-gray-100">
+                                    <p class="text-sm font-bold text-gray-700 mb-2 flex items-center"><i class="fa-solid fa-arrow-right-arrow-left mr-2 text-red-500"></i>最終結算清單</p>
+                                    <div v-if="settlementSummary.length === 0" class="p-4 text-center text-gray-500 bg-gray-50 rounded-lg">
+                                        恭喜！目前所有帳目已結清。
+                                    </div>
+                                    <div v-for="(settle, sIndex) in settlementSummary" :key="sIndex" class="flex items-center justify-between p-3 bg-white border-2 border-red-200 rounded-xl shadow-md">
+                                        <div class="font-bold text-gray-800">
+                                            {{ settle.debtor }} <i class="fa-solid fa-arrow-right text-red-500 mx-1"></i> {{ settle.creditor }}
+                                        </div>
+                                        <div class="text-right flex-shrink-0">
+                                            <!-- 顯示 TWD 結算金額 -->
+                                            <p class="text-xl font-extrabold text-red-500">
+                                                NT$ {{ formatMoney(settle.amount) }}
+                                            </p>
+                                            <!-- 顯示 JPY 預估結算金額 -->
+                                            <p class="text-sm text-gray-400 font-medium">
+                                                ≈ JPY {{ formatMoney(twdToJpy(settle.amount)) }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div v-else class="p-4 text-center text-gray-400 bg-gray-50 rounded-lg">
+                                <p v-if="tripData.members.length === 1">目前只有您一位成員，無需分帳。</p>
+                                <p v-else>尚無支出紀錄，無需結算。</p>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Tab: 記帳明細 (Expenses) -->
+                    <div v-else-if="currentFinanceSubTab === 'expenses'" class="space-y-6">
+
+                        <!-- 記帳明細 -->
+                        <div class="bg-white rounded-2xl p-5 shadow-sm space-y-4 border-t-4 border-finance-main">
+                            <h3 class="font-bold text-xl text-gray-800 border-b pb-2 flex justify-between items-center">
+                                <i class="fa-solid fa-receipt mr-2 text-finance-main"></i>
+                                記帳明細
+                                <span class="text-sm font-normal text-gray-500">{{ tripData.expenses.length }} 筆</span>
+                            </h3>
+
+                            <!-- 詳細列表 -->
+                            <div class="space-y-3 max-h-[60vh] overflow-y-auto hide-scrollbar">
+                                <div v-if="tripData.expenses.length === 0" class="p-4 text-center text-gray-400 text-sm">尚無記帳紀錄，請在總覽頁籤新增。</div>
+                                <div v-for="(exp, index) in sortedExpenses" :key="index" class="p-3 border rounded-xl shadow-sm bg-white hover:bg-gray-50 transition">
+                                    <div class="flex justify-between items-center">
+                                        <div class="min-w-0">
+                                            <p class="font-bold text-gray-800 truncate">{{ exp.item }}</p>
+                                            <p class="text-xs text-gray-500 mt-0.5">付款人: <span class="font-medium text-finance-main">{{ exp.payer }}</span></p>
+                                        </div>
+                                        <div class="text-right flex-shrink-0">
+                                            <p class="font-bold text-lg text-indigo-600">{{ exp.currency }}{{ formatMoney(exp.amount) }}</p>
+                                            <p class="text-xs text-gray-400">≈ NT$ {{ formatMoney(exp.amountTWD) }}</p>
+                                        </div>
+                                    </div>
+                                    <!-- 分攤細節 (簡化顯示) -->
+                                    <div class="mt-2 pt-2 border-t border-gray-100">
+                                        <p class="text-xs font-bold text-gray-500 mb-1">分攤明細:</p>
+                                        <div class="flex flex-wrap gap-2">
+                                            <span v-for="(share, member) in exp.shares" :key="member" class="text-xs px-2 py-0.5 rounded-full" :class="share > 0 ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'">
+                                                {{ member }}: {{ exp.currency }}{{ formatMoney(share) }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="text-right mt-2">
+                                        <button @click="deleteExpense(exp.originalIndex)" class="text-xs text-red-400 hover:text-red-600"><i class="fa-solid fa-trash"></i> 刪除</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab: 匯率管理 (Rates) -->
+                    <div v-else-if="currentFinanceSubTab === 'rates'" class="space-y-6">
+                        
+                        <!-- 匯率歷史紀錄管理 (僅供管理匯率用) -->
+                        <div class="bg-white rounded-2xl p-5 shadow-sm space-y-4">
+                            <h3 class="font-bold text-lg text-gray-700 border-b pb-2">匯率歷史紀錄</h3>
+                            <div class="pt-3 border-t border-gray-100">
+                                <h4 class="text-sm font-bold text-gray-600 mb-2">手動新增匯率 (1 JPY = X TWD)</h4>
+                                <div class="flex gap-2">
+                                    <input type="date" v-model="rateForm.date" class="bg-gray-50 border rounded-lg p-2 text-sm flex-1">
+                                    <input type="number" step="0.0001" v-model.number="rateForm.rate" placeholder="0.xxxx" class="w-1/4 bg-gray-50 border rounded-lg p-2 text-sm text-center">
+                                    <button @click="addHistoricalRate" class="bg-blue-600 text-white px-4 rounded-lg text-sm font-bold">儲存</button>
+                                </div>
+                            </div>
+                            
+                            <!-- 歷史匯率列表 -->
+                            <div class="space-y-2 mt-4 max-h-48 overflow-y-auto hide-scrollbar">
+                                <div v-for="(rate, index) in sortedRates" :key="index" class="flex justify-between items-center p-3 bg-gray-50 rounded-lg" :class="{'border-2 border-converter-main/50': rate.rate === tripData.settings.currentRate}">
+                                    <div class="flex items-center gap-3">
+                                        <span class="text-sm font-bold text-gray-700 flex-shrink-0">{{ rate.date }}</span>
+                                        <div class="text-xs text-gray-500">{{ rate.source }}</div>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="font-bold text-lg text-converter-main">{{ rate.rate.toFixed(4) }}</p>
+                                        <button v-if="rate.rate !== tripData.settings.currentRate" @click="setAsCurrentRate(rate.rate)" class="text-xs text-blue-500 hover:text-blue-700">設為當前</button>
+                                        <button v-else class="text-xs text-converter-main font-bold">當前使用</button>
+                                        <button @click="deleteHistoricalRate(index)" class="text-xs text-red-300 hover:text-red-500 ml-2"><i class="fa-solid fa-trash"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+            </div>
+
+            <!-- Tab 3: 地圖 -->
+            <div v-else-if="currentTab === 'map'" class="space-y-4">
+                <div class="bg-white rounded-2xl p-4 shadow-sm">
+                    <h2 class="font-bold text-lg mb-4">行程導航</h2>
+                    <div class="space-y-3">
+                        <div v-for="loc in allLocations" :key="loc.id" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div class="w-2 h-8 rounded-full bg-okinawa-500 flex-shrink-0"></div>
+                            <div class="truncate flex-1 min-w-0">
+                                <p class="font-bold text-sm truncate">{{ loc.name }}</p>
+                                <p class="text-xs text-gray-400">Day {{ loc.dayIndex + 1 }}</p>
+                            </div>
+                            <a :href="getGoogleMapsLink(loc.name)" target="_blank" class="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-blue-600">Go</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- 底部導航 -->
+        <nav class="fixed bottom-0 left-0 w-full bg-white border-t border-gray-100 flex justify-around py-3 pb-6 z-40 max-w-[480px] left-1/2 -translate-x-1/2 shadow-[0_-5px_10px_rgba(0,0,0,0.02)]">
+            <button @click="currentTab = 'itinerary'" :class="currentTab === 'itinerary' ? 'text-okinawa-600' : 'text-gray-400'" class="flex flex-col items-center gap-1"><i class="fa-solid fa-suitcase-rolling text-xl"></i><span class="text-[10px]">行程</span></button>
+            <button @click="currentTab = 'finance'" :class="currentTab === 'finance' ? 'text-finance-main' : 'text-gray-400'" class="flex flex-col items-center gap-1"><i class="fa-solid fa-coins text-xl"></i><span class="text-[10px]">財政</span></button>
+            <button @click="currentTab = 'map'" :class="currentTab === 'map' ? 'text-green-600' : 'text-gray-400'" class="flex flex-col items-center gap-1"><i class="fa-solid fa-map text-xl"></i><span class="text-[10px]">導航</span></button>
+        </nav>
+    </div>
+
+    <!-- MODAL: 新增/編輯行程 -->
+    <div v-if="showEventModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" @click.self="closeEventModal">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-bounce-in">
+            <h3 class="text-lg font-bold mb-4">{{ isEditingEvent ? '編輯' : '新增' }}行程</h3>
+            <div class="space-y-4">
+                <div class="flex gap-2">
+                    <input type="time" v-model="eventForm.time" class="bg-gray-50 border rounded-lg p-2.5 flex-1">
+                    <select v-model="eventForm.type" class="bg-gray-50 border rounded-lg p-2.5 flex-1">
+                        <option value="spot">景點</option>
+                        <option value="food">美食</option>
+                        <option value="hotel">住宿</option>
+                        <option value="shop">購物</option>
+                    </select>
+                </div>
+                <input type="text" v-model="eventForm.title" placeholder="標題 (例：水族館)" class="w-full bg-gray-50 border rounded-lg p-2.5">
+                <input type="text" v-model="eventForm.location" placeholder="地點 (Google Maps 搜尋用)" class="w-full bg-gray-50 border rounded-lg p-2.5">
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button v-if="isEditingEvent" @click="deleteEvent" class="px-4 py-2.5 text-red-500 bg-red-50 rounded-xl font-bold text-sm">刪除</button>
+                <button @click="saveEvent" class="flex-1 px-4 py-2.5 bg-okinawa-600 text-white rounded-xl font-bold text-sm">儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: 記帳 (兩步驟：基本資訊 + 分攤金額) -->
+    <div v-if="showExpenseModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" @click.self="currentExpenseStep === 1 ? showExpenseModal = false : null">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+            <h3 class="text-lg font-bold mb-4 flex items-center">
+                <span :class="currentExpenseStep === 1 ? 'text-finance-main' : 'text-gray-400'">1. 基本資訊</span> 
+                <i class="fa-solid fa-arrow-right mx-2 text-sm text-gray-300"></i>
+                <span :class="currentExpenseStep === 2 ? 'text-finance-main' : 'text-gray-400'">2. 分攤金額</span>
+            </h3>
+
+            <!-- Step 1: 基本資訊 -->
+            <div v-show="currentExpenseStep === 1" class="space-y-4">
+                <input type="text" v-model="expenseForm.item" placeholder="項目 (例：燒肉)" class="w-full bg-gray-50 border rounded-lg p-3">
+                
+                <div class="flex gap-2">
+                    <div class="relative w-1/3">
+                        <select v-model="expenseForm.currency" class="w-full h-full bg-gray-100 border-none rounded-lg p-3 appearance-none text-center font-bold">
+                            <option value="JPY">🇯🇵 JPY</option>
+                            <option value="TWD">🇹🇼 TWD</option>
+                        </select>
+                        <i class="fa-solid fa-chevron-down absolute right-2 top-4 text-xs text-gray-400 pointer-events-none"></i>
+                    </div>
+                    <input type="number" v-model.number="expenseForm.amount" placeholder="金額" class="w-2/3 bg-gray-50 border rounded-lg p-3 text-xl font-bold text-indigo-600">
+                </div>
+                
+                <div>
+                    <label class="text-xs text-gray-400 font-bold mb-1 block">誰付錢？ (付款人)</label>
+                    <div class="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
+                        <button v-for="member in tripData.members" :key="member"
+                            @click="expenseForm.payer = member"
+                            :class="expenseForm.payer === member ? 'bg-finance-main text-white shadow-md' : 'bg-gray-100 text-gray-500'"
+                            class="px-4 py-2 rounded-full text-sm font-bold transition">
+                            {{ member }}
+                        </button>
+                    </div>
+                </div>
+                
+                <button @click="nextExpenseStep" class="w-full mt-4 py-3 bg-finance-main text-white rounded-xl font-bold shadow-lg">下一步：設定分攤</button>
+            </div>
+
+            <!-- Step 2: 分攤金額 -->
+            <div v-show="currentExpenseStep === 2" class="space-y-4">
+                <div class="bg-gray-100 p-3 rounded-xl">
+                    <p class="text-sm font-bold text-gray-700">總金額: 
+                        <span class="text-indigo-600">{{ expenseForm.currency }}{{ formatMoney(expenseForm.amount) }}</span>
+                    </p>
+                    <p class="text-sm font-bold text-gray-700">未分攤金額: 
+                        <span :class="{'text-red-500': remainingShare < 0, 'text-green-600': remainingShare === 0, 'text-orange-500': remainingShare > 0}">
+                            {{ expenseForm.currency }}{{ formatMoney(remainingShare) }}
+                        </span>
+                    </p>
+                </div>
+
+                <div v-for="member in tripData.members" :key="member" class="flex items-center gap-3">
+                    <span class="w-1/4 font-bold text-gray-700">{{ member }}</span>
+                    <div class="flex-1 relative">
+                         <input type="number" 
+                                v-model.number="expenseForm.shares[member]" 
+                                placeholder="分攤金額" 
+                                class="w-full bg-white border border-gray-300 rounded-lg p-3 text-lg font-bold text-center focus:ring-finance-main focus:border-finance-main">
+                        <span class="absolute right-3 top-3.5 text-gray-500 font-medium">{{ expenseForm.currency }}</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button @click="currentExpenseStep = 1" class="w-1/3 py-3 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">上一步</button>
+                    <button @click="saveExpense" :disabled="remainingShare !== 0" class="flex-1 py-3 text-white rounded-xl font-bold shadow-lg disabled:opacity-50" :class="remainingShare === 0 ? 'bg-finance-main hover:bg-finance-main/90' : 'bg-gray-500'">
+                        <i class="fa-solid fa-save mr-2"></i>儲存記帳
+                    </button>
+                </div>
+                <p v-if="remainingShare !== 0" class="text-xs text-red-500 text-center mt-2">請確保所有分攤金額總和等於總金額。</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- MODAL: 旅伴管理/本地儲存 (設定) -->
+    <div v-if="showSettings" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" @click.self="showSettings = false">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl h-[70vh] flex flex-col">
+            <h3 class="text-lg font-bold mb-4 border-b pb-2">旅伴管理與工具</h3>
+            <div class="flex-1 overflow-y-auto space-y-6">
+                
+                <section>
+                    <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">旅伴名單 (用於記帳分攤)</h4>
+                    <div class="flex flex-wrap gap-2 mb-2">
+                        <div v-for="(m, i) in tripData.members" :key="i" class="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-2">
+                            {{ m }}
+                            <button v-if="tripData.members.length > 1" @click="removeMember(i)" class="text-indigo-400 hover:text-indigo-600"><i class="fa-solid fa-xmark"></i></button>
+                            <span v-else class="text-xs text-indigo-400">(預設使用者)</span>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="text" v-model="newMemberName" placeholder="新增名字" class="flex-1 bg-gray-50 border rounded-lg p-2 text-sm">
+                        <button @click="addMember" class="bg-gray-800 text-white px-4 rounded-lg text-sm font-bold">新增</button>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-2">此名單將用於記帳時的付款人與分攤人。</p>
+                </section>
+                
+                <section>
+                    <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">本地儲存資訊</h4>
+                    <div class="bg-gray-50 p-3 rounded-lg text-sm text-gray-600">
+                        <p>資料已儲存在您的瀏覽器中。</p>
+                        <button @click="clearLocalData" class="text-xs text-red-500 hover:text-red-700 mt-1 font-medium">
+                            <i class="fa-solid fa-bomb mr-1"></i> 清空所有本地資料
+                        </button>
+                    </div>
+                </section>
+            </div>
+            <button @click="showSettings=false" class="mt-4 w-full py-3 bg-gray-100 text-gray-500 rounded-xl font-bold">關閉管理</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const { createApp, ref, computed, onMounted, watch } = Vue;
+
+    // --- Local Storage Configuration ---
+    const STORAGE_KEY = 'okinawaTripDataV2';
+
+    createApp({
+        setup() {
+            // --- State ---
+            const userName = ref('我'); // The only user
+            const loadingApi = ref(false); 
+            
+            // App Data (Synced with Local Storage)
+            const tripData = ref({
+                itinerary: [{ date: new Date().toISOString().split('T')[0], events: [] }],
+                expenses: [],
+                members: ['我'], // Default member is '我'
+                settings: { 
+                    currentRate: 0.23, // The rate currently used for display/conversion (1 JPY = ? TWD)
+                    historicalRates: [
+                        { date: '2025-06-01', rate: 0.23, source: '初始預設值' }
+                    ]
+                } 
+            });
+
+            // UI State
+            const currentTab = ref('itinerary');
+            const currentFinanceSubTab = ref('overview'); // NEW: Finance Sub-Tab State
+            const activeDayIndex = ref(0);
+            const showEventModal = ref(false);
+            const showExpenseModal = ref(false);
+            const showSettings = ref(false);
+            const currentExpenseStep = ref(1); // 1: Basic Info, 2: Sharing
+
+            // Forms
+            const eventForm = ref({});
+            const expenseForm = ref({}); // Initialized in openAddExpenseModal
+            const newMemberName = ref('');
+            
+            // Converter Forms
+            const conversionForm = ref({ amount: 10000, currency: 'JPY' });
+            const rateForm = ref({
+                date: new Date().toISOString().split('T')[0],
+                rate: 0.2300,
+                source: '手動輸入'
+            });
+            
+            // Helper for Editing Itinerary
+            const isEditingEvent = ref(false);
+            const editingIndices = ref({ d: -1, e: -1 });
+
+            // --- Computed ---
+
+            const remainingShare = computed(() => {
+                if (!expenseForm.value.shares || !expenseForm.value.amount) return 0;
+                
+                const totalAmount = Number(expenseForm.value.amount) || 0;
+                // Sum all shares
+                const totalShares = Object.values(expenseForm.value.shares).reduce((sum, share) => sum + (Number(share) || 0), 0);
+                
+                // Use a small tolerance for floating point numbers
+                const tolerance = 0.01;
+                const diff = totalAmount - totalShares;
+                
+                if (Math.abs(diff) < tolerance) {
+                    return 0; // Considered fully split
+                }
+                
+                return diff;
+            });
+
+            const totalExpenseTWD = computed(() => {
+                // Sum of all expenses' pre-calculated TWD values
+                return tripData.value.expenses.reduce((sum, exp) => {
+                    return sum + (Number(exp.amountTWD) || 0);
+                }, 0);
+            });
+
+            const sortedExpenses = computed(() => {
+                // Add original index to allow deletion
+                return tripData.value.expenses.map((e, i) => ({...e, originalIndex: i})).reverse();
+            });
+
+            const allLocations = computed(() => {
+                let locs = [];
+                tripData.value.itinerary.forEach((day, dIdx) => {
+                    day.events.forEach((evt, eIdx) => {
+                        if(evt.location) {
+                            locs.push({ id: `${dIdx}-${eIdx}`, name: evt.location, dayIndex: dIdx });
+                        }
+                    });
+                });
+                return locs;
+            });
+            
+            const convertedAmount = computed(() => {
+                const amount = Number(conversionForm.value.amount) || 0;
+                const rate = tripData.value.settings.currentRate; // 1 JPY = X TWD
+                
+                if (conversionForm.value.currency === 'JPY') {
+                    // JPY -> TWD
+                    return amount * rate;
+                } else {
+                    // TWD -> JPY (1 TWD = 1/X JPY)
+                    return amount / rate;
+                }
+            });
+
+            const sortedRates = computed(() => {
+                // Sort by date descending
+                return [...tripData.value.settings.historicalRates]
+                    .sort((a, b) => new Date(b.date) - new Date(a.date));
+            });
+            
+            // =======================================================
+            // Member Balance & Settlement Calculation
+            // =======================================================
+
+            // 1. 計算每位成員的淨餘額 (Paid TWD - Shared TWD)
+            const memberBalances = computed(() => {
+                const balances = {};
+                tripData.value.members.forEach(m => {
+                    balances[m] = 0;
+                });
+
+                tripData.value.expenses.forEach(exp => {
+                    const totalAmount = Number(exp.amount) || 0;
+                    const totalAmountTWD = Number(exp.amountTWD) || 0;
+                    
+                    // Paid: If member is the payer, add the full TWD equivalent to their balance
+                    if (exp.payer && balances.hasOwnProperty(exp.payer)) {
+                        balances[exp.payer] += totalAmountTWD;
+                    }
+
+                    // Shared: Subtract the member's share (converted to TWD) from their balance
+                    if (exp.shares) {
+                        tripData.value.members.forEach(m => {
+                            const shareAmount = Number(exp.shares[m]) || 0;
+                            let shareTWD = 0;
+
+                            if (totalAmount > 0) {
+                                // Calculate TWD share based on the proportion of the original currency
+                                shareTWD = (shareAmount / totalAmount) * totalAmountTWD;
+                            }
+                            
+                            // Subtract the calculated TWD share
+                            if (balances.hasOwnProperty(m)) {
+                                balances[m] -= shareTWD;
+                            }
+                        });
+                    }
+                });
+
+                // Round balances to avoid floating point errors
+                for (const member in balances) {
+                    // Round to nearest TWD dollar
+                    balances[member] = Math.round(balances[member]); 
+                }
+
+                return balances;
+            });
+
+            // 2. 產生最終結算清單 (Settlement Summary)
+            const settlementSummary = computed(() => {
+                const balances = JSON.parse(JSON.stringify(memberBalances.value)); // Copy current balances
+                const summary = [];
+
+                // 區分債權人 (Creditors: balance > 0) 和債務人 (Debtors: balance < 0)
+                let creditors = tripData.value.members
+                    .map(m => ({ name: m, amount: balances[m] }))
+                    .filter(c => c.amount > 0)
+                    .sort((a, b) => b.amount - a.amount); // From largest creditor
+
+                let debtors = tripData.value.members
+                    .map(m => ({ name: m, amount: balances[m] * -1 })) // Amount is debt owed (positive)
+                    .filter(d => d.amount > 0)
+                    .sort((a, b) => b.amount - a.amount); // From largest debtor
+
+                let dIndex = 0;
+                let cIndex = 0;
+
+                // 貪婪演算法 (Greedy Algorithm) 結算
+                while (dIndex < debtors.length && cIndex < creditors.length) {
+                    let debtor = debtors[dIndex];
+                    let creditor = creditors[cIndex];
+
+                    if (debtor.amount <= 0) {
+                        dIndex++;
+                        continue;
+                    }
+                    if (creditor.amount <= 0) {
+                        cIndex++;
+                        continue;
+                    }
+
+                    // 結算金額取兩者中的最小值
+                    const settlementAmount = Math.min(debtor.amount, creditor.amount);
+
+                    summary.push({
+                        debtor: debtor.name,
+                        creditor: creditor.name,
+                        amount: settlementAmount,
+                    });
+
+                    // 更新剩餘餘額
+                    debtor.amount -= settlementAmount;
+                    creditor.amount -= settlementAmount;
+                    
+                    // Use tolerance for near-zero to avoid floating point issues
+                    if (Math.abs(debtor.amount) < 1) { 
+                        dIndex++;
+                    }
+                    if (Math.abs(creditor.amount) < 1) { 
+                        cIndex++;
+                    }
+                }
+
+                return summary;
+            });
+
+            // =======================================================
+            // END: Member Balance & Settlement Calculation
+            // =======================================================
+
+
+            // --- Local Storage Logic ---
+            const loadData = () => {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (data) {
+                    const loadedData = JSON.parse(data);
+                    
+                    // Add default members if missing or empty
+                    if (!loadedData.members || loadedData.members.length === 0) {
+                        loadedData.members = [userName.value];
+                    }
+                    
+                    tripData.value = loadedData;
+                }
+                
+                // Ensure default payer exists
+                if (!tripData.value.members.includes(userName.value)) {
+                    tripData.value.members.push(userName.value);
+                }
+            };
+
+            const saveData = () => {
+                // Ensure the data structure is clean before saving
+                const dataToSave = JSON.parse(JSON.stringify(tripData.value)); 
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+            };
+
+            const clearLocalData = () => {
+                // IMPORTANT: Replace window.confirm with a custom modal in a real app
+                if(window.confirm('確定要清空所有本地資料嗎？此動作無法復原！')) {
+                    localStorage.removeItem(STORAGE_KEY);
+                    // Reload default state
+                    tripData.value = {
+                        itinerary: [{ date: new Date().toISOString().split('T')[0], events: [] }],
+                        expenses: [],
+                        members: ['我'],
+                        settings: { 
+                            currentRate: 0.23, 
+                            historicalRates: [{ date: new Date().toISOString().split('T')[0], rate: 0.23, source: '初始預設值' }]
+                        } 
+                    };
+                    // Instead of alert, use a custom modal
+                    console.log("本地資料已清空，應用程式已重置。");
+                }
+            };
+
+            // --- Converter/Rate Methods ---
+            const fetchLiveExchangeRate = async () => {
+                loadingApi.value = true;
+                const apiKey = ""; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+                const systemPrompt = "你是專業的金融助理。請查找台灣銀行最新的日圓 (JPY) 兌換台幣 (TWD) 的**現金賣出匯率**（即銀行賣給客戶的價格，1 JPY = ? TWD）。請僅輸出數字，精確到小數點後四位。例如：0.2154";
+                const userQuery = "台灣銀行最新的日圓現金賣出匯率是多少？";
+                
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    tools: [{ "google_search": {} }],
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }]
+                    },
+                };
+
+                let attempt = 0;
+                const maxRetries = 3;
+                let newRate = null;
+                let sources = []; 
+
+                while (attempt < maxRetries) {
+                    try {
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        
+                        const result = await response.json();
+                        const candidate = result.candidates?.[0];
+                        const text = candidate?.content?.parts?.[0]?.text?.trim();
+
+                        const groundingMetadata = candidate?.groundingMetadata;
+                        if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                            sources = groundingMetadata.groundingAttributions
+                                .map(attribution => ({
+                                    uri: attribution.web?.uri,
+                                    title: attribution.web?.title,
+                                }))
+                                .filter(source => source.uri && source.title);
+                        }
+                        
+                        // Robust extraction of floating point number
+                        const extractedRate = parseFloat(text.match(/(\d+\.\d{3,})/)?.[0] || text);
+                        
+                        if (!isNaN(extractedRate) && extractedRate > 0.001 && extractedRate < 10) {
+                            newRate = extractedRate;
+                            break; // Success
+                        } else {
+                            console.warn("API returned invalid rate format:", text);
+                            throw new Error("Invalid rate format received from API.");
+                        }
+
+                    } catch (error) {
+                        console.error(`Attempt ${attempt + 1} failed:`, error);
+                        if (attempt < maxRetries - 1) {
+                            // Exponential backoff
+                            await new Promise(res => setTimeout(res, Math.pow(2, attempt) * 1000)); 
+                        } else {
+                            // Instead of alert, use custom message or console log
+                            console.error("無法獲取台灣銀行即時匯率，請檢查網路或稍後再試。");
+                        }
+                    }
+                    attempt++;
+                }
+                
+                if (newRate) {
+                    const roundedRate = parseFloat(newRate.toFixed(4));
+                    tripData.value.settings.currentRate = roundedRate;
+                    
+                    const sourceInfo = sources.length > 0 ? sources[0].title || sources[0].uri : '台灣銀行 (網路查詢)';
+
+                    const today = new Date().toISOString().split('T')[0];
+                    const existingTodayIndex = tripData.value.settings.historicalRates.findIndex(r => r.date === today && r.source.includes('台灣銀行'));
+                    
+                    if (existingTodayIndex !== -1) {
+                        tripData.value.settings.historicalRates[existingTodayIndex].rate = roundedRate;
+                        tripData.value.settings.historicalRates[existingTodayIndex].source = sourceInfo;
+                    } else {
+                        tripData.value.settings.historicalRates.push({ 
+                            date: today, 
+                            rate: roundedRate, 
+                            source: sourceInfo 
+                        });
+                    }
+                    saveData();
+                    console.log(`已成功更新最新匯率：1 JPY ≈ ${roundedRate.toFixed(4)} TWD (來源：台灣銀行)`);
+                }
+                
+                loadingApi.value = false;
+            };
+
+            const addHistoricalRate = () => {
+                // Instead of alert, use custom modal or console log
+                if (!rateForm.value.date || !rateForm.value.rate || rateForm.value.rate <= 0) {
+                    console.error('請輸入有效的日期和匯率 (必須大於 0)');
+                    return;
+                }
+                const newRateObj = {
+                    date: rateForm.value.date,
+                    rate: parseFloat(rateForm.value.rate.toFixed(4)),
+                    source: '手動輸入'
+                };
+
+                const exists = tripData.value.settings.historicalRates.some(r => r.date === newRateObj.date && r.rate === newRateObj.rate);
+                if (exists) {
+                    console.warn('此日期和匯率已存在於紀錄中。');
+                    return;
+                }
+
+                tripData.value.settings.historicalRates.push(newRateObj);
+                rateForm.value.rate = 0.2300; // Reset form
+                saveData();
+            };
+
+            const deleteHistoricalRate = (index) => {
+                const rateToDelete = sortedRates.value[index];
+                const originalIndex = tripData.value.settings.historicalRates.findIndex(r => 
+                    r.date === rateToDelete.date && r.rate === rateToDelete.rate
+                );
+
+                if (originalIndex !== -1) {
+                    if (tripData.value.settings.currentRate === rateToDelete.rate && tripData.value.settings.historicalRates.length > 1) {
+                        console.error('無法刪除正在使用的匯率，請先切換至其他匯率。');
+                        return;
+                    }
+                    
+                    // Instead of window.confirm, use a custom modal
+                    if(confirm(`確定刪除 ${rateToDelete.date} 的匯率 ${rateToDelete.rate.toFixed(4)} 嗎？`)) {
+                        tripData.value.settings.historicalRates.splice(originalIndex, 1);
+                        saveData();
+                    }
+                }
+            };
+
+            const setAsCurrentRate = (rate) => {
+                tripData.value.settings.currentRate = rate;
+                saveData();
+            };
+            
+            // --- Expense Methods ---
+
+            const openAddExpenseModal = () => {
+                const initialShares = tripData.value.members.reduce((acc, member) => {
+                    acc[member] = 0;
+                    return acc;
+                }, {});
+
+                expenseForm.value = { 
+                    item: '', 
+                    amount: null, 
+                    currency: 'JPY', 
+                    payer: userName.value,
+                    shares: initialShares
+                };
+                currentExpenseStep.value = 1;
+                showExpenseModal.value = true;
+            };
+
+            const nextExpenseStep = () => {
+                const amount = Number(expenseForm.value.amount);
+                // Instead of alert, use custom modal or console log
+                if(!expenseForm.value.item || !amount || amount <= 0 || !expenseForm.value.payer) {
+                    console.error('請輸入有效的項目、金額和付款人。');
+                    return;
+                }
+                
+                if (tripData.value.members.length === 1) {
+                    expenseForm.value.shares[tripData.value.members[0]] = amount;
+                }
+                
+                currentExpenseStep.value = 2;
+            };
+
+            const saveExpense = () => {
+                // Instead of alert, use custom modal or console log
+                if (remainingShare.value !== 0) {
+                    console.error('請確保所有分攤金額總和等於總金額。');
+                    return;
+                }
+                
+                const currentRate = tripData.value.settings.currentRate;
+                const amount = Number(expenseForm.value.amount);
+                
+                const amountTWD = expenseForm.value.currency === 'JPY' 
+                    ? amount * currentRate
+                    : amount;
+
+                tripData.value.expenses.push({
+                    ...expenseForm.value,
+                    amount: amount, 
+                    amountTWD: amountTWD, 
+                    date: new Date().toISOString()
+                });
+                
+                saveData();
+                showExpenseModal.value = false;
+                // 切換到記帳明細頁籤以查看新增的項目
+                currentFinanceSubTab.value = 'expenses'; 
+            };
+
+            const deleteExpense = (originalIndex) => {
+                // Instead of window.confirm, use a custom modal
+                if(confirm('確定刪除此筆款項嗎？')) { 
+                    tripData.value.expenses.splice(originalIndex, 1);
+                    saveData();
+                }
+            };
+
+            const addMember = () => {
+                if(newMemberName.value && !tripData.value.members.includes(newMemberName.value)) {
+                    tripData.value.members.push(newMemberName.value);
+                    newMemberName.value = '';
+                    saveData();
+                }
+            };
+            
+            const removeMember = (idx) => {
+                // Instead of alert, use custom modal or console log
+                if (tripData.value.members.length <= 1) {
+                    console.error('無法移除最後一個成員。');
+                    return;
+                }
+                const memberToRemove = tripData.value.members[idx];
+                const isUsed = tripData.value.expenses.some(exp => 
+                    exp.payer === memberToRemove || (exp.shares && exp.shares.hasOwnProperty(memberToRemove) && exp.shares[memberToRemove] > 0)
+                );
+                
+                if(isUsed) {
+                    console.error(`成員 ${memberToRemove} 仍在現有的記帳紀錄中作為付款人或分攤人，請先移除相關紀錄後再刪除成員。`);
+                    return;
+                }
+
+                // Instead of window.confirm, use a custom modal
+                if(confirm(`確定移除成員 ${memberToRemove} 嗎？`)) {
+                    tripData.value.members.splice(idx, 1);
+                    saveData();
+                }
+            };
+
+            // --- Itinerary Methods ---
+            
+            const addDay = () => {
+                const last = new Date(tripData.value.itinerary[tripData.value.itinerary.length-1].date);
+                last.setDate(last.getDate()+1);
+                tripData.value.itinerary.push({ date: last.toISOString().split('T')[0], events: [] });
+                saveData();
+            };
+
+            const deleteDay = (idx) => {
+                // Instead of window.confirm, use a custom modal
+                if(confirm('刪除這天？')) {
+                    tripData.value.itinerary.splice(idx, 1);
+                    if(activeDayIndex.value >= tripData.value.itinerary.length) activeDayIndex.value--;
+                    saveData();
+                }
+            };
+            
+            const editDayDate = (idx) => {
+                // Using prompt is discouraged, but kept here for simplicity as it's not a core interaction
+                const d = prompt("新日期 (YYYY-MM-DD)", tripData.value.itinerary[idx].date);
+                if(d) { tripData.value.itinerary[idx].date = d; saveData(); }
+            };
+
+            const openAddEventModal = () => {
+                isEditingEvent.value = false;
+                eventForm.value = { time: '10:00', type: 'spot', title: '', location: '' };
+                showEventModal.value = true;
+            };
+
+            const openEditEventModal = (d, e) => {
+                isEditingEvent.value = true;
+                editingIndices.value = { d, e };
+                eventForm.value = { ...tripData.value.itinerary[d].events[e] };
+                showEventModal.value = true;
+            };
+
+            const saveEvent = () => {
+                // Instead of alert, use custom modal or console log
+                if(!eventForm.value.title) { console.error('請輸入標題'); return; }
+                if(isEditingEvent.value) {
+                    tripData.value.itinerary[editingIndices.value.d].events[editingIndices.value.e] = {...eventForm.value};
+                } else {
+                    tripData.value.itinerary[activeDayIndex.value].events.push({...eventForm.value});
+                    tripData.value.itinerary[activeDayIndex.value].events.sort((a,b) => a.time.localeCompare(b.time));
+                }
+                saveData();
+                showEventModal.value = false;
+            };
+
+            const deleteEvent = () => {
+                tripData.value.itinerary[editingIndices.value.d].events.splice(editingIndices.value.e, 1);
+                saveData();
+                showEventModal.value = false;
+            };
+            
+            // --- New Utility: TWD to JPY conversion for Display ---
+            const twdToJpy = (twdAmount) => {
+                const rate = tripData.value.settings.currentRate;
+                if (rate <= 0) return 0;
+                // JPY equivalent = TWD Amount / (1 JPY = X TWD)
+                return Math.round(twdAmount / rate);
+            };
+
+
+            // --- General Utilities ---
+            const formatDateShort = (d) => { const date = new Date(d); return `${date.getMonth()+1}/${date.getDate()}`; };
+            // Format money to string with commas, rounding to 0 decimals for TWD display
+            const formatMoney = (n) => {
+                // Ensure the number is positive for formatting, take Math.abs()
+                const absoluteN = Math.abs(Number(n));
+                return absoluteN.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+            };
+            const getIconColor = (t) => ({'spot':'bg-blue-500','food':'bg-orange-500','hotel':'bg-purple-500','shop':'bg-pink-500'}[t]||'bg-gray-400');
+            const getGoogleMapsLink = (loc) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc + ' 沖繩')}`;
+            const closeEventModal = () => showEventModal.value = false;
+            
+            // --- Lifecycle Hook ---
+            onMounted(() => {
+                loadData();
+                // Ensure the active day index is valid upon load
+                if (activeDayIndex.value >= tripData.value.itinerary.length) {
+                    activeDayIndex.value = tripData.value.itinerary.length > 0 ? tripData.value.itinerary.length - 1 : 0;
+                }
+            });
+
+            // Watch for changes in tripData and save automatically
+            watch(tripData, saveData, { deep: true });
+
+            // Watch expense amount change to auto-update single share
+            watch(() => expenseForm.value.amount, (newAmount) => {
+                if (currentExpenseStep.value === 2 && tripData.value.members.length === 1 && expenseForm.value.shares) {
+                    expenseForm.value.shares[tripData.value.members[0]] = Number(newAmount) || 0;
+                }
+            });
+            
+            watch(() => expenseForm.value.currency, () => {
+                if (expenseForm.value.shares) {
+                    tripData.value.members.forEach(member => {
+                        expenseForm.value.shares[member] = 0;
+                    });
+                }
+            });
+
+            return {
+                userName, tripData, loadingApi,
+                currentTab, currentFinanceSubTab, // Export new sub-tab state
+                activeDayIndex, showEventModal, showExpenseModal, showSettings,
+                currentExpenseStep, remainingShare,
+                eventForm, expenseForm, newMemberName, conversionForm, rateForm, isEditingEvent,
+                
+                addDay, deleteDay, editDayDate, 
+                openAddEventModal, openEditEventModal, saveEvent, deleteEvent, closeEventModal,
+                openAddExpenseModal, saveExpense, nextExpenseStep, deleteExpense,
+                addMember, removeMember, clearLocalData,
+                
+                // Finance Computed/Methods
+                memberBalances, settlementSummary, twdToJpy,
+                fetchLiveExchangeRate, addHistoricalRate, deleteHistoricalRate, setAsCurrentRate,
+                convertedAmount, sortedRates,
+                
+                totalExpenseTWD, sortedExpenses, allLocations,
+                formatDateShort, formatMoney, getIconColor, getGoogleMapsLink
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
