@@ -73,7 +73,7 @@
             <div class="flex justify-between items-center">
                 <div>
                     <div class="flex items-center gap-2">
-                        <h1 class="text-xl font-bold tracking-wide">沖繩旅遊</h1>
+                        <h1 class="text-xl font-bold tracking-wide">沖繩旅費通 (含雙幣結算)</h1>
                         <span class="bg-white/20 text-xs px-2 py-0.5 rounded text-white/90">LOCAL SAVE</span>
                     </div>
                     <div class="flex items-center gap-2 mt-1">
@@ -215,10 +215,20 @@
                                 <span class="font-bold text-converter-main">{{ tripData.settings.currentRate.toFixed(4) }}</span>
                             </p>
 
-                            <button @click="fetchLiveExchangeRate" :disabled="loadingApi" class="w-full mt-3 py-2 bg-green-600 text-white rounded-xl font-bold shadow-md hover:bg-green-700 transition disabled:opacity-50 text-sm">
-                                <i :class="{'fa-spin': loadingApi}" class="fa-solid fa-sync mr-2"></i>
-                                {{ loadingApi ? '查詢中...' : '獲取台灣銀行最新匯率 (網頁查詢)' }}
-                            </button>
+                            <!-- NEW: 匯率查詢按鈕區塊 -->
+                            <div class="space-y-2 mt-3">
+                                <!-- AI 自動獲取 (保留原本功能) -->
+                                <button @click="fetchLiveExchangeRate" :disabled="loadingApi" class="w-full py-2 bg-green-600 text-white rounded-xl font-bold shadow-md hover:bg-green-700 transition disabled:opacity-50 text-sm">
+                                    <i :class="{'fa-spin': loadingApi}" class="fa-solid fa-sync mr-2"></i>
+                                    {{ loadingApi ? 'AI 查詢中...' : 'AI 自動獲取最新匯率' }}
+                                </button>
+                                <p class="text-xs text-gray-400 text-center">**AI 查詢的是台灣銀行現金賣出匯率**</p>
+                                
+                                <!-- 直接開啟網頁查詢 (新功能) -->
+                                <a href="https://rate.bot.com.tw/xrt?Lang=zh-TW" target="_blank" class="block w-full text-center py-2 border-2 border-blue-500 text-blue-500 rounded-xl font-bold hover:bg-blue-50 transition text-sm">
+                                    <i class="fa-solid fa-up-right-from-square mr-2"></i>直接開啟台灣銀行網頁查詢
+                                </a>
+                            </div>
                         </div>
 
                         <!-- 總支出概覽 -->
@@ -817,10 +827,10 @@
                 const apiKey = ""; 
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
 
-                const systemPrompt = "你是專業的金融助理。請查找台灣銀行最新的日圓 (JPY) 兌換台幣 (TWD) 的**現金賣出匯率**（即銀行賣給客戶的價格，1 JPY = ? TWD）。請僅輸出數字，精確到小數點後四位。例如：0.2154";
+                // 系統指令：強調只輸出數字，且指定為現金賣出匯率
+                const systemPrompt = "你是專業的金融助理。請查找台灣銀行最新的日圓 (JPY) 兌換台幣 (TWD) 的**現金賣出匯率**（即銀行賣給客戶的價格，1 JPY = ? TWD）。請**僅輸出數字**，精確到小數點後四位。例如：0.2154";
                 const userQuery = "台灣銀行最新的日圓現金賣出匯率是多少？";
                 
-                // 這是透過 Google Search Grounding 獲取即時資訊的方式
                 const payload = {
                     contents: [{ parts: [{ text: userQuery }] }],
                     tools: [{ "google_search": {} }],
@@ -847,6 +857,10 @@
                         const result = await response.json();
                         const candidate = result.candidates?.[0];
                         const text = candidate?.content?.parts?.[0]?.text?.trim();
+                        
+                        // ** 關鍵除錯點 **：先印出原始輸出，以確認模型是否有遵守「僅輸出數字」的指令
+                        console.log("--- API Rate Fetch Debug ---");
+                        console.log("Raw API Output for Rate:", text);
 
                         const groundingMetadata = candidate?.groundingMetadata;
                         if (groundingMetadata && groundingMetadata.groundingAttributions) {
@@ -858,14 +872,28 @@
                                 .filter(source => source.uri && source.title);
                         }
                         
-                        // Robust extraction of floating point number
-                        const extractedRate = parseFloat(text.match(/(\d+\.\d{3,})/)?.[0] || text);
+                        // ** 優化解析邏輯 **
+                        let extractedRate = null;
                         
+                        // 1. 嘗試尋找第一個看起來像匯率的數字 (0.xxx)
+                        const rateMatch = text.match(/0\.\d{3,}/);
+                        if (rateMatch) {
+                            extractedRate = parseFloat(rateMatch[0]);
+                        } else {
+                            // 2. Fallback: 清理非數字和非點的字元，再嘗試解析
+                            // (這有風險，但可以應對模型輸出多餘文字的情況)
+                            const cleanedText = text.replace(/[^\d.]/g, ''); 
+                            extractedRate = parseFloat(cleanedText);
+                        }
+                        
+                        console.log("Extracted Rate:", extractedRate);
+
+                        // 確保匯率是一個合理的值 (通常在 0.001 到 10 之間)
                         if (!isNaN(extractedRate) && extractedRate > 0.001 && extractedRate < 10) {
                             newRate = extractedRate;
                             break; // Success
                         } else {
-                            console.warn("API returned invalid rate format:", text);
+                            console.warn("API returned invalid rate format, attempting retry or failing.");
                             throw new Error("Invalid rate format received from API.");
                         }
 
@@ -875,7 +903,6 @@
                             // Exponential backoff
                             await new Promise(res => setTimeout(res, Math.pow(2, attempt) * 1000)); 
                         } else {
-                            // Instead of alert, use custom message or console log
                             console.error("無法獲取台灣銀行即時匯率，請檢查網路或稍後再試。");
                         }
                     }
@@ -886,7 +913,7 @@
                     const roundedRate = parseFloat(newRate.toFixed(4));
                     tripData.value.settings.currentRate = roundedRate;
                     
-                    const sourceInfo = sources.length > 0 ? sources[0].title || sources[0].uri : '台灣銀行 (網頁查詢)';
+                    const sourceInfo = sources.length > 0 ? sources[0].title || sources[0].uri : '台灣銀行 (AI 查詢)';
 
                     const today = new Date().toISOString().split('T')[0];
                     const existingTodayIndex = tripData.value.settings.historicalRates.findIndex(r => r.date === today && r.source.includes('台灣銀行'));
@@ -902,7 +929,7 @@
                         });
                     }
                     saveData();
-                    console.log(`已成功更新最新匯率：1 JPY ≈ ${roundedRate.toFixed(4)} TWD (來源：網頁查詢)`);
+                    console.log(`已成功更新最新匯率：1 JPY ≈ ${roundedRate.toFixed(4)} TWD (來源：AI 查詢)`);
                 }
                 
                 loadingApi.value = false;
