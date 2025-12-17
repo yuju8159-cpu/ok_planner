@@ -48,7 +48,7 @@
         body { background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .app-container { max-width: 480px; margin: 0 auto; min-height: 100vh; background-color: white; padding-bottom: 80px; box-shadow: 0 0 20px rgba(0,0,0,0.05); }
+        .app-container { max-width: 480px; margin: 0 auto; min-height: 10vh; background-color: white; padding-bottom: 80px; box-shadow: 0 0 20px rgba(0,0,0,0.05); }
         .loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.8); backdrop-filter: blur(5px); z-index: 100; display: flex; align-items: center; justify-content: center; flex-direction: column; }
         .animate-bounce-in { animation: bounceIn 0.3s ease-out forwards; }
         @keyframes bounceIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -127,6 +127,11 @@
                                         </span>
                                         <h3 class="font-bold text-gray-800">{{ event.title }}</h3>
                                         <p class="text-sm text-gray-500 mt-1"><i class="fa-solid fa-location-dot mr-1 text-red-400"></i>{{ event.location }}</p>
+                                        <!-- NEW: 顯示備註 -->
+                                        <p v-if="event.notes" class="text-sm text-gray-600 mt-1 bg-white p-2 rounded-lg border-l-4 border-gray-300">
+                                            <i class="fa-solid fa-note-sticky mr-1 text-gray-400"></i>
+                                            {{ event.notes }}
+                                        </p>
                                     </div>
                                     <a :href="getGoogleMapsLink(event.location)" target="_blank" @click.stop class="bg-blue-100 text-blue-600 p-2 rounded-full w-8 h-8 flex items-center justify-center">
                                         <i class="fa-solid fa-location-arrow text-xs"></i>
@@ -212,7 +217,7 @@
 
                             <button @click="fetchLiveExchangeRate" :disabled="loadingApi" class="w-full mt-3 py-2 bg-green-600 text-white rounded-xl font-bold shadow-md hover:bg-green-700 transition disabled:opacity-50 text-sm">
                                 <i :class="{'fa-spin': loadingApi}" class="fa-solid fa-sync mr-2"></i>
-                                {{ loadingApi ? '查詢中...' : '獲取台灣銀行最新匯率 (現金賣出)' }}
+                                {{ loadingApi ? '查詢中...' : '獲取台灣銀行最新匯率 (網頁查詢)' }}
                             </button>
                         </div>
 
@@ -415,6 +420,8 @@
                 </div>
                 <input type="text" v-model="eventForm.title" placeholder="標題 (例：水族館)" class="w-full bg-gray-50 border rounded-lg p-2.5">
                 <input type="text" v-model="eventForm.location" placeholder="地點 (Google Maps 搜尋用)" class="w-full bg-gray-50 border rounded-lg p-2.5">
+                <!-- NEW: 備註欄位 -->
+                <textarea v-model="eventForm.notes" placeholder="備註 (例如：訂位資訊、停車資訊)" rows="3" class="w-full bg-gray-50 border rounded-lg p-2.5 text-sm resize-none"></textarea>
             </div>
             <div class="flex gap-3 mt-6">
                 <button v-if="isEditingEvent" @click="deleteEvent" class="px-4 py-2.5 text-red-500 bg-red-50 rounded-xl font-bold text-sm">刪除</button>
@@ -561,7 +568,7 @@
 
             // UI State
             const currentTab = ref('itinerary');
-            const currentFinanceSubTab = ref('overview'); // NEW: Finance Sub-Tab State
+            const currentFinanceSubTab = ref('overview'); // Finance Sub-Tab State
             const activeDayIndex = ref(0);
             const showEventModal = ref(false);
             const showExpenseModal = ref(false);
@@ -569,7 +576,7 @@
             const currentExpenseStep = ref(1); // 1: Basic Info, 2: Sharing
 
             // Forms
-            const eventForm = ref({});
+            const eventForm = ref({}); // Initialized in openAddEventModal
             const expenseForm = ref({}); // Initialized in openAddExpenseModal
             const newMemberName = ref('');
             
@@ -813,6 +820,7 @@
                 const systemPrompt = "你是專業的金融助理。請查找台灣銀行最新的日圓 (JPY) 兌換台幣 (TWD) 的**現金賣出匯率**（即銀行賣給客戶的價格，1 JPY = ? TWD）。請僅輸出數字，精確到小數點後四位。例如：0.2154";
                 const userQuery = "台灣銀行最新的日圓現金賣出匯率是多少？";
                 
+                // 這是透過 Google Search Grounding 獲取即時資訊的方式
                 const payload = {
                     contents: [{ parts: [{ text: userQuery }] }],
                     tools: [{ "google_search": {} }],
@@ -878,7 +886,7 @@
                     const roundedRate = parseFloat(newRate.toFixed(4));
                     tripData.value.settings.currentRate = roundedRate;
                     
-                    const sourceInfo = sources.length > 0 ? sources[0].title || sources[0].uri : '台灣銀行 (網路查詢)';
+                    const sourceInfo = sources.length > 0 ? sources[0].title || sources[0].uri : '台灣銀行 (網頁查詢)';
 
                     const today = new Date().toISOString().split('T')[0];
                     const existingTodayIndex = tripData.value.settings.historicalRates.findIndex(r => r.date === today && r.source.includes('台灣銀行'));
@@ -894,7 +902,7 @@
                         });
                     }
                     saveData();
-                    console.log(`已成功更新最新匯率：1 JPY ≈ ${roundedRate.toFixed(4)} TWD (來源：台灣銀行)`);
+                    console.log(`已成功更新最新匯率：1 JPY ≈ ${roundedRate.toFixed(4)} TWD (來源：網頁查詢)`);
                 }
                 
                 loadingApi.value = false;
@@ -1074,13 +1082,15 @@
 
             const openAddEventModal = () => {
                 isEditingEvent.value = false;
-                eventForm.value = { time: '10:00', type: 'spot', title: '', location: '' };
+                // NEW: Initialize with notes
+                eventForm.value = { time: '10:00', type: 'spot', title: '', location: '', notes: '' };
                 showEventModal.value = true;
             };
 
             const openEditEventModal = (d, e) => {
                 isEditingEvent.value = true;
                 editingIndices.value = { d, e };
+                // NEW: Ensure notes is loaded when editing
                 eventForm.value = { ...tripData.value.itinerary[d].events[e] };
                 showEventModal.value = true;
             };
@@ -1154,7 +1164,7 @@
 
             return {
                 userName, tripData, loadingApi,
-                currentTab, currentFinanceSubTab, // Export new sub-tab state
+                currentTab, currentFinanceSubTab, 
                 activeDayIndex, showEventModal, showExpenseModal, showSettings,
                 currentExpenseStep, remainingShare,
                 eventForm, expenseForm, newMemberName, conversionForm, rateForm, isEditingEvent,
