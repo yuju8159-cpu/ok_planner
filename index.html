@@ -74,6 +74,7 @@
         const generateId = () => Math.random().toString(36).substr(2, 9);
         
         const parseUrl = (text) => {
+            if (!text) return text;
             const urlRegex = /(https?:\/\/[^\s]+)/g;
             return text.split(urlRegex).map((part, i) => {
                 if (part.match(urlRegex)) {
@@ -83,15 +84,75 @@
             });
         };
 
-        // --- Initial Data ---
+        // --- Initial Data Loaded from Google Sheet (Updated with User's Itinerary, No Times) ---
+        const IMPORTED_DAYS = [
+            { id: 'd1', date: '2025-03-17', note: '抵達沖繩 / 中部' },
+            { id: 'd2', date: '2025-03-18', note: '北部觀光 / 古宇利島' },
+            { id: 'd3', date: '2025-03-19', note: '往南部移動 / 國際通' },
+            { id: 'd4', date: '2025-03-20', note: '那霸市區 / 瀨長島' },
+            { id: 'd5', date: '2025-03-21', note: '回程 / 免稅採購' },
+        ];
+
+        // Instead of time, we use 'order' to keep the sequence
+        const IMPORTED_EVENTS = [
+            // Day 1: 3/17
+            { id: 'e1-1', dayId: 'd1', order: 1, title: '華航CI120班機到沖繩', location: '桃園國際機場', mapUrl: '', note: '搭乘08:10班機' },
+            { id: 'e1-2', dayId: 'd1', order: 2, title: 'OTS租車服務中心取車', location: 'OTS租車 臨空豐崎營業所', mapUrl: '', note: '到達沖繩出關後搭OTS接駁車前往' },
+            { id: 'e1-3', dayId: 'd1', order: 3, title: '魚屋直營食堂吃午餐', location: '魚屋直營食堂', mapUrl: '', note: '約10~15分鐘到達' },
+            { id: 'e1-4', dayId: 'd1', order: 4, title: '港川外人住宅', location: '港川外人住宅', mapUrl: '', note: '約30分鐘到達' },
+            { id: 'e1-5', dayId: 'd1', order: 5, title: '永旺夢樂城', location: 'AEON MALL Okinawa Rycom', mapUrl: '', note: '約36分鐘到達' },
+            { id: 'e1-6', dayId: 'd1', order: 6, title: 'Vessel花苑飯店辦理入住', location: 'Vessel Hotel Campana Okinawa', mapUrl: '', note: '約45分鐘到達' },
+            { id: 'e1-7', dayId: 'd1', order: 7, title: '美國村逛街含吃晚餐', location: '美國村', mapUrl: '', note: '晚上行程' },
+
+            // Day 2: 3/18
+            { id: 'e2-1', dayId: 'd2', order: 1, title: '許田休息站', location: '道の駅 許田', mapUrl: '', note: '飯店吃完早餐後前往 (約60分鐘到達)' },
+            { id: 'e2-2', dayId: 'd2', order: 2, title: '古宇利島海洋塔', location: '古宇利海洋塔', mapUrl: '', note: '約40分鐘到達' },
+            { id: 'e2-3', dayId: 'd2', order: 3, title: '古宇利島蝦蝦飯 / Shirasa食堂', location: '古宇利島蝦蝦飯', mapUrl: '', note: '品嚐蝦蝦飯(3分鐘到達)，至Shirasa食堂吃午餐海膽飯(約2分鐘到達)' },
+            { id: 'e2-4', dayId: 'd2', order: 4, title: 'Shinmei Coffee', location: 'Shinmei Coffee', mapUrl: '', note: '約15分鐘到達' },
+            { id: 'e2-5', dayId: 'd2', order: 5, title: '名護鳳梨園', location: '名護鳳梨園', mapUrl: '', note: '約15分鐘到達' },
+            { id: 'e2-6', dayId: 'd2', order: 6, title: 'PANCHORI-NA麵包店', location: 'PANCHORI-NA', mapUrl: '', note: '約11分鐘到達' },
+            { id: 'e2-7', dayId: 'd2', order: 7, title: '部瀨名海中公園觀景台', location: '部瀨名海中公園', mapUrl: '', note: '約25分鐘到達' },
+            { id: 'e2-8', dayId: 'd2', order: 8, title: '萬座毛', location: '萬座毛', mapUrl: '', note: '約25分鐘到達' },
+            { id: 'e2-9', dayId: 'd2', order: 9, title: '燒肉五苑吃晚餐', location: '燒肉五苑', mapUrl: '', note: '約45分鐘到達 (開2桌，1桌吃牛、1桌不吃牛)' },
+            { id: 'e2-10', dayId: 'd2', order: 10, title: '回Vessel花苑飯店 / 美國村', location: '美國村', mapUrl: '', note: '回飯店，美國村逛街(Shopping) (約15分鐘到達)' },
+
+            // Day 3: 3/19
+            { id: 'e3-1', dayId: 'd3', order: 1, title: '琉球村', location: '琉球村', mapUrl: '', note: '飯店吃完早餐辦理退房前往 (約35分鐘到達)' },
+            { id: 'e3-2', dayId: 'd3', order: 2, title: '浜の家海鮮料理吃午餐', location: '浜の家海鮮料理', mapUrl: '', note: '約5分鐘到達' },
+            { id: 'e3-3', dayId: 'd3', order: 3, title: 'PARCO CITY', location: 'PARCO CITY', mapUrl: '', note: '約45分鐘到達' },
+            { id: 'e3-4', dayId: 'd3', order: 4, title: '國際通大和Roynet飯店辦理入住', location: 'Daiwa Roynet Hotel Naha Kokusai-dori', mapUrl: '', note: '約25分鐘到達' },
+            { id: 'e3-5', dayId: 'd3', order: 5, title: '逛國際通含晚餐', location: '國際通', mapUrl: '', note: '晚上逛街(Shopping)' },
+
+            // Day 4: 3/20
+            { id: 'e4-1', dayId: 'd4', order: 1, title: '達摩寺 (Sairaiin)', location: '達摩寺 西来院', mapUrl: '', note: '飯店吃完早餐後前往 (約15分鐘到達)' },
+            { id: 'e4-2', dayId: 'd4', order: 2, title: '首里城', location: '首里城', mapUrl: '', note: '約5分鐘到達' },
+            { id: 'e4-3', dayId: 'd4', order: 3, title: '琉球玻璃村', location: '琉球玻璃村', mapUrl: '', note: '約40分鐘到達' },
+            { id: 'e4-4', dayId: 'd4', order: 4, title: 'DMM水族館', location: 'DMM Kariyushi水族館', mapUrl: '', note: '約15分鐘到達' },
+            { id: 'e4-5', dayId: 'd4', order: 5, title: '瀨長島', location: '瀨長島 Umikaji Terrace', mapUrl: '', note: '約8分鐘到達' },
+            { id: 'e4-6', dayId: 'd4', order: 6, title: '回國際通大和Roynet飯店', location: 'Daiwa Roynet Hotel Naha Kokusai-dori', mapUrl: '', note: '約35分鐘到達' },
+            { id: 'e4-7', dayId: 'd4', order: 7, title: '逛國際通含晚餐', location: '國際通', mapUrl: '', note: '晚上逛街(Shopping)' },
+
+            // Day 5: 3/21
+            { id: 'e5-1', dayId: 'd5', order: 1, title: '波上宮', location: '波上宮', mapUrl: '', note: '飯店吃完早餐後前往 (約12分鐘到達)' },
+            { id: 'e5-2', dayId: 'd5', order: 2, title: '回飯店整理行李並辦理退房', location: 'Daiwa Roynet Hotel Naha Kokusai-dori', mapUrl: '', note: '約12分鐘到達' },
+            { id: 'e5-3', dayId: 'd5', order: 3, title: '回OTS還車', location: 'OTS租車 臨空豐崎營業所', mapUrl: '', note: '約30分鐘到達' },
+            { id: 'e5-4', dayId: 'd5', order: 4, title: '那霸機場寄放行李', location: '那霸機場', mapUrl: '', note: '搭接駁車前往' },
+            { id: 'e5-5', dayId: 'd5', order: 5, title: '第一牧志公設市場', location: '第一牧志公設市場', mapUrl: '', note: '搭單軌前往' },
+            { id: 'e5-6', dayId: 'd5', order: 6, title: '歌町DFS免稅商店', location: 'T Galleria by DFS, Okinawa', mapUrl: '', note: '搭單軌前往' },
+            { id: 'e5-7', dayId: 'd5', order: 7, title: '那霸機場拿行李等掛行李', location: '那霸機場', mapUrl: '', note: '搭單軌回機場' },
+            { id: 'e5-8', dayId: 'd5', order: 8, title: '華航飛機回台灣', location: '那霸機場', mapUrl: '', note: '搭乘20:20飛機' },
+        ];
+
         const DEFAULT_CHECKLIST = [
             { id: '1', text: '護照 (有效期6個月以上)', checked: false },
             { id: '2', text: 'VJW (Visit Japan Web) 登錄截圖', checked: false },
-            { id: '3', text: '日幣現金 / 信用卡 / 西瓜卡', checked: false },
-            { id: '4', text: '駕照日文譯本 (自駕必備)', checked: false },
+            { id: '3', text: '日幣現金 / 信用卡 (海外回饋卡)', checked: false },
+            { id: '4', text: '駕照正本 + 駕照日文譯本 (自駕必備)', checked: false },
             { id: '5', text: '行動電源 / 充電線 / 網卡', checked: false },
-            { id: '6', text: '個人藥品 / 暈車藥', checked: false },
+            { id: '6', text: '個人藥品 / 暈車藥 / 腸胃藥', checked: false },
         ];
+
+        const INITIAL_MEMO = `🌤️ 天氣預報 (3/17~3/21)：\n氣溫約 16度～23度左右\n(建議帶薄長袖與防風外套)\n\n🚗 租車注意：\n1. 日本為右駕靠左行駛\n2. 轉彎時務必記得「左轉拐小彎，右轉拐大彎」\n3. 遇到「止まれ」標誌務必完全煞停\n\n🍽️ 餐廳筆記：\n- 燒肉五苑：已確認分2桌(1桌牛/1桌不吃牛)\n- 古宇利島：蝦蝦飯跟海膽飯(Shirasa食堂)距離很近`;
 
         const INFO_LINKS = {
             weather: "https://www.jma.go.jp/bosai/forecast/#area_type=offices&area_code=471000",
@@ -105,30 +166,34 @@
             
             // Data States
             const [travelers, setTravelers] = useState(['我', '旅伴A']);
-            const [days, setDays] = useState([{ id: 'd1', date: '2025-06-01', note: '抵達沖繩' }]);
-            const [events, setEvents] = useState([]); 
+            const [days, setDays] = useState(IMPORTED_DAYS); 
+            const [events, setEvents] = useState(IMPORTED_EVENTS); 
             const [expenses, setExpenses] = useState([]); 
-            const [currency, setCurrency] = useState({ rate: 0.22, symbol: 'JPY' });
+            const [currency, setCurrency] = useState({ rate: 0.21, symbol: 'JPY' });
             const [checklist, setChecklist] = useState(DEFAULT_CHECKLIST);
-            const [memo, setMemo] = useState('');
+            const [memo, setMemo] = useState(INITIAL_MEMO);
             
             // --- Persistence ---
             useEffect(() => {
-                const load = (key, setter) => {
-                    const saved = localStorage.getItem(`okinawa_${key}`);
-                    if (saved) setter(JSON.parse(saved));
+                const load = (key, setter, defaultVal) => {
+                    const saved = localStorage.getItem(`okinawa_notime_${key}`);
+                    if (saved) {
+                        setter(JSON.parse(saved));
+                    } else if (defaultVal) {
+                        setter(defaultVal);
+                    }
                 };
-                load('travelers', setTravelers);
-                load('days', setDays);
-                load('events', setEvents);
-                load('expenses', setExpenses);
-                load('currency', setCurrency);
-                load('checklist', setChecklist);
-                load('memo', setMemo);
+                load('travelers', setTravelers, ['我', '旅伴A']);
+                load('days', setDays, IMPORTED_DAYS);
+                load('events', setEvents, IMPORTED_EVENTS);
+                load('expenses', setExpenses, []);
+                load('currency', setCurrency, { rate: 0.21, symbol: 'JPY' });
+                load('checklist', setChecklist, DEFAULT_CHECKLIST);
+                load('memo', setMemo, INITIAL_MEMO);
             }, []);
 
             useEffect(() => {
-                const save = (key, data) => localStorage.setItem(`okinawa_${key}`, JSON.stringify(data));
+                const save = (key, data) => localStorage.setItem(`okinawa_notime_${key}`, JSON.stringify(data));
                 save('travelers', travelers);
                 save('days', days);
                 save('events', events);
@@ -146,8 +211,18 @@
                     case 'money': return <MoneyView travelers={travelers} expenses={expenses} setExpenses={setExpenses} currency={currency} setCurrency={setCurrency} />;
                     case 'tools': return <ToolsView checklist={checklist} setChecklist={setChecklist} memo={memo} setMemo={setMemo} />;
                     case 'info': return <InfoView />;
-                    case 'settings': return <SettingsView travelers={travelers} setTravelers={setTravelers} setExpenses={setExpenses} />;
+                    case 'settings': return <SettingsView travelers={travelers} setTravelers={setTravelers} setExpenses={setExpenses} resetToImport={resetToImport} days={days} events={events} />;
                     default: return <ItineraryView />;
+                }
+            };
+
+            const resetToImport = () => {
+                if(confirm("確定要重置並載入 3/17~3/21 的無時間序專屬行程嗎？\n(您目前手動修改的行程將會被覆蓋)")) {
+                    setDays(IMPORTED_DAYS);
+                    setEvents(IMPORTED_EVENTS);
+                    setMemo(INITIAL_MEMO);
+                    alert("行程已成功更新！");
+                    setActiveTab('itinerary');
                 }
             };
 
@@ -185,10 +260,10 @@
                             <h1 className="text-2xl font-bold flex items-center gap-2 text-blue-600">
                                 <Icon name="palmtree" size={28} /> 沖繩自由行
                             </h1>
-                            <p className="text-xs text-gray-400 mt-1 pl-9">Okinawa Trip Helper</p>
+                            <p className="text-xs text-gray-400 mt-1 pl-9">Okinawa 3/17 - 3/21</p>
                         </div>
                         <nav className="flex-1 px-4 space-y-2">
-                            <NavItem id="itinerary" icon="calendar" label="行程規劃" />
+                            <NavItem id="itinerary" icon="list" label="行程規劃" />
                             <NavItem id="map" icon="map" label="地圖導航" />
                             <NavItem id="money" icon="wallet" label="記帳分帳" />
                             <NavItem id="tools" icon="clipboard-list" label="清單備忘" />
@@ -196,7 +271,7 @@
                             <NavItem id="settings" icon="settings" label="設定管理" />
                         </nav>
                         <div className="p-4 border-t border-gray-100 text-xs text-gray-400 text-center">
-                            v1.1 RWD Enhanced
+                            專屬行程版 v3.0 (無時間序)
                         </div>
                     </aside>
 
@@ -218,7 +293,7 @@
 
                         {/* Mobile Bottom Nav */}
                         <nav className="md:hidden bg-white border-t border-gray-200 flex justify-around p-2 pb-safe flex-shrink-0 z-10">
-                            <MobileNavItem id="itinerary" icon="calendar" label="行程" />
+                            <MobileNavItem id="itinerary" icon="list" label="行程" />
                             <MobileNavItem id="map" icon="map" label="導航" />
                             <MobileNavItem id="money" icon="wallet" label="記帳" />
                             <MobileNavItem id="tools" icon="clipboard-list" label="清單" />
@@ -264,7 +339,10 @@
                 if (eventData.id) {
                     setEvents(events.map(e => e.id === eventData.id ? eventData : e));
                 } else {
-                    setEvents([...events, { ...eventData, id: generateId() }]);
+                    // Find max order for the current day to append
+                    const dayEvents = events.filter(e => e.dayId === selectedDayId);
+                    const maxOrder = dayEvents.length > 0 ? Math.max(...dayEvents.map(e => e.order || 0)) : 0;
+                    setEvents([...events, { ...eventData, order: maxOrder + 1, id: generateId() }]);
                 }
                 setIsEditingEvent(null);
             };
@@ -273,13 +351,36 @@
                 if(confirm("刪除此行程？")) setEvents(events.filter(e => e.id !== id));
             };
 
+            const moveEvent = (eventId, direction) => {
+                const dayEvents = events.filter(e => e.dayId === selectedDayId).sort((a,b) => (a.order || 0) - (b.order || 0));
+                const index = dayEvents.findIndex(e => e.id === eventId);
+                
+                if (direction === 'up' && index > 0) {
+                    const current = dayEvents[index];
+                    const prev = dayEvents[index - 1];
+                    setEvents(events.map(e => {
+                        if (e.id === current.id) return { ...e, order: prev.order };
+                        if (e.id === prev.id) return { ...e, order: current.order };
+                        return e;
+                    }));
+                } else if (direction === 'down' && index < dayEvents.length - 1) {
+                    const current = dayEvents[index];
+                    const next = dayEvents[index + 1];
+                    setEvents(events.map(e => {
+                        if (e.id === current.id) return { ...e, order: next.order };
+                        if (e.id === next.id) return { ...e, order: current.order };
+                        return e;
+                    }));
+                }
+            };
+
             const currentDay = days.find(d => d.id === selectedDayId);
+            const dayEventsList = events.filter(e => e.dayId === currentDay?.id).sort((a,b) => (a.order || 0) - (b.order || 0));
 
             return (
                 <div className="h-full flex flex-col md:flex-row md:gap-6 md:p-6 md:h-[calc(100vh-2rem)]">
-                    {/* Day Selector: Tabs on Mobile, Sidebar List on Desktop */}
+                    {/* Day Selector */}
                     <div className="md:w-64 md:flex-shrink-0 flex-col flex bg-white md:rounded-2xl md:shadow-sm md:border border-gray-100 overflow-hidden sticky top-0 z-20 md:static">
-                        {/* Mobile Tabs Container */}
                         <div className="md:hidden flex items-center gap-2 p-3 overflow-x-auto hide-scrollbar bg-white/95 backdrop-blur border-b border-gray-100">
                              {days.map((day, index) => (
                                 <button
@@ -299,7 +400,6 @@
                             </button>
                         </div>
 
-                        {/* Desktop List Container */}
                         <div className="hidden md:flex flex-col h-full">
                             <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                                 <h3 className="font-bold text-gray-700">天數列表</h3>
@@ -310,14 +410,17 @@
                                     <button
                                         key={day.id}
                                         onClick={() => setSelectedDayId(day.id)}
-                                        className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all flex justify-between items-center ${
+                                        className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all flex flex-col ${
                                             selectedDayId === day.id 
                                             ? 'bg-blue-50 text-blue-700 border border-blue-100 shadow-sm' 
                                             : 'text-gray-600 hover:bg-gray-50'
                                         }`}
                                     >
-                                        <span>Day {index + 1}</span>
-                                        <span className="text-xs text-gray-400">{new Date(day.date).toLocaleDateString('zh-TW', {month:'numeric', day:'numeric'})}</span>
+                                        <div className="flex justify-between items-center w-full">
+                                            <span>Day {index + 1}</span>
+                                            <span className="text-xs opacity-70">{new Date(day.date).toLocaleDateString('zh-TW', {month:'numeric', day:'numeric'})}</span>
+                                        </div>
+                                        <div className="text-xs mt-1 truncate opacity-60 font-normal">{day.note}</div>
                                     </button>
                                 ))}
                             </div>
@@ -335,7 +438,7 @@
                         ) : (
                             <div className="animate-slide-up h-full flex flex-col">
                                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex-1 flex flex-col">
-                                    <div className="bg-gray-50/50 p-4 flex justify-between items-center border-b border-gray-100">
+                                    <div className="bg-gray-50/50 p-4 flex flex-col md:flex-row md:justify-between md:items-center border-b border-gray-100 gap-3">
                                         <div className="flex items-center gap-3">
                                             <h2 className="text-xl font-bold text-blue-800">Day {days.findIndex(d=>d.id===currentDay.id)+1}</h2>
                                             <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-full border border-gray-200">
@@ -348,42 +451,71 @@
                                                 />
                                             </div>
                                         </div>
-                                        <button onClick={() => removeDay(currentDay.id)} className="text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors" title="刪除整天">
-                                            <Icon name="trash-2" size={18}/>
-                                        </button>
+                                        <div className="flex items-center gap-2 flex-1 md:flex-none">
+                                            <input 
+                                                type="text" 
+                                                placeholder="輸入本日主題 (例如: 北部觀光)" 
+                                                value={currentDay.note}
+                                                onChange={(e) => setDays(days.map(d => d.id === currentDay.id ? {...d, note: e.target.value} : d))}
+                                                className="bg-gray-100 border-none px-3 py-1.5 rounded-lg text-sm flex-1 md:w-48 outline-none focus:ring-2 focus:ring-blue-200"
+                                            />
+                                            <button onClick={() => removeDay(currentDay.id)} className="text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors" title="刪除整天">
+                                                <Icon name="trash-2" size={18}/>
+                                            </button>
+                                        </div>
                                     </div>
                                     
-                                    <div className="p-4 space-y-3 flex-1 overflow-y-auto md:custom-scrollbar">
-                                        {events.filter(e => e.dayId === currentDay.id).length === 0 && (
-                                            <div className="flex flex-col items-center justify-center py-20 text-gray-300 gap-2 border-2 border-dashed border-gray-100 rounded-xl m-4">
+                                    <div className="p-4 space-y-3 flex-1 overflow-y-auto md:custom-scrollbar relative">
+                                        {/* Vertical Timeline Line */}
+                                        <div className="absolute left-8 md:left-9 top-8 bottom-8 w-0.5 bg-gray-100 z-0"></div>
+
+                                        {dayEventsList.length === 0 && (
+                                            <div className="flex flex-col items-center justify-center py-20 text-gray-300 gap-2 border-2 border-dashed border-gray-100 rounded-xl m-4 z-10 relative bg-white">
                                                 <Icon name="map" size={32} className="opacity-20"/>
                                                 <div className="text-sm italic">點擊下方按鈕新增第一個行程</div>
                                             </div>
                                         )}
-                                        {events.filter(e => e.dayId === currentDay.id).sort((a,b) => a.time.localeCompare(b.time)).map(event => (
-                                            <div key={event.id} className="flex gap-4 items-start p-4 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-md transition-all group">
-                                                <div className="text-sm font-mono font-bold text-blue-600 mt-0.5 bg-blue-50 px-2 py-1 rounded border border-blue-100 min-w-[60px] text-center">{event.time}</div>
+                                        {dayEventsList.map((event, index) => (
+                                            <div key={event.id} className="relative z-10 flex gap-4 items-start p-3 md:p-4 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-md transition-all group ml-1">
+                                                {/* Sequence Number Circle */}
+                                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center border-[3px] border-white shadow-sm relative z-20 mt-0.5">
+                                                    {index + 1}
+                                                </div>
+                                                
                                                 <div className="flex-1 min-w-0">
                                                     <div className="font-bold text-gray-800 text-lg">{event.title}</div>
                                                     {event.location && (
                                                         <a href={event.mapUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`} 
                                                            target="_blank" 
-                                                           className="text-sm text-gray-500 flex items-center gap-1 mt-1 hover:text-blue-600 transition-colors w-fit">
-                                                            <Icon name="map-pin" size={14} /> {event.location}
+                                                           className="text-sm text-gray-500 flex items-center gap-1 mt-1 hover:text-blue-600 transition-colors w-fit bg-gray-50 px-2 py-0.5 rounded-md">
+                                                            <Icon name="map-pin" size={14} className="text-red-400"/> {event.location}
                                                         </a>
                                                     )}
-                                                    {event.note && <div className="text-sm text-gray-500 mt-2 bg-gray-50 p-2 rounded border border-gray-100">{event.note}</div>}
+                                                    {event.note && (
+                                                        <div className="text-sm text-gray-600 mt-2 bg-blue-50/50 p-2.5 rounded-lg border border-blue-50 flex gap-2 items-start">
+                                                            <Icon name="info" size={16} className="text-blue-400 flex-shrink-0 mt-0.5"/> 
+                                                            <span className="leading-relaxed">{event.note}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <div className="flex flex-col gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => setIsEditingEvent(event)} className="text-gray-400 hover:text-blue-500 p-1"><Icon name="edit-2" size={18}/></button>
-                                                    <button onClick={() => deleteEvent(event.id)} className="text-gray-400 hover:text-red-500 p-1"><Icon name="x" size={18}/></button>
+                                                
+                                                {/* Actions */}
+                                                <div className="flex flex-col gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded-lg backdrop-blur-sm">
+                                                    <div className="flex items-center justify-center bg-gray-50 rounded-md mb-1 border border-gray-100 overflow-hidden">
+                                                        <button disabled={index === 0} onClick={() => moveEvent(event.id, 'up')} className="p-1 text-gray-400 hover:text-blue-500 hover:bg-gray-100 disabled:opacity-20"><Icon name="chevron-up" size={16}/></button>
+                                                        <button disabled={index === dayEventsList.length - 1} onClick={() => moveEvent(event.id, 'down')} className="p-1 text-gray-400 hover:text-blue-500 hover:bg-gray-100 disabled:opacity-20"><Icon name="chevron-down" size={16}/></button>
+                                                    </div>
+                                                    <div className="flex gap-1 justify-end">
+                                                        <button onClick={() => setIsEditingEvent(event)} className="text-gray-400 hover:text-blue-500 p-1.5 bg-gray-50 hover:bg-blue-50 rounded-md transition-colors"><Icon name="edit-2" size={16}/></button>
+                                                        <button onClick={() => deleteEvent(event.id)} className="text-gray-400 hover:text-red-500 p-1.5 bg-gray-50 hover:bg-red-50 rounded-md transition-colors"><Icon name="x" size={16}/></button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
                                         
                                         <button 
-                                            onClick={() => setIsEditingEvent({ dayId: currentDay.id, time: '10:00', title: '', location: '', mapUrl: '', note: '' })}
-                                            className="w-full py-4 mt-4 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50 transition-all text-sm font-bold flex items-center justify-center gap-2"
+                                            onClick={() => setIsEditingEvent({ dayId: currentDay.id, title: '', location: '', mapUrl: '', note: '' })}
+                                            className="w-full py-4 mt-6 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50 transition-all text-sm font-bold flex items-center justify-center gap-2 relative z-10 bg-white"
                                         >
                                             <Icon name="plus-circle" size={18}/> 新增行程
                                         </button>
@@ -393,7 +525,7 @@
                         )}
                     </div>
 
-                    {/* Edit Modal (Responsive) */}
+                    {/* Edit Modal (No Time Input) */}
                     {isEditingEvent && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-end md:items-center justify-center p-4 backdrop-blur-sm">
                             <div className="bg-white w-full max-w-lg rounded-2xl md:rounded-xl p-6 space-y-5 shadow-2xl animate-slide-up flex flex-col max-h-[90vh]">
@@ -402,33 +534,27 @@
                                     <button onClick={() => setIsEditingEvent(null)} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={24}/></button>
                                 </div>
                                 <div className="overflow-y-auto flex-1 space-y-4 pr-1">
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="col-span-1">
-                                            <label className="text-sm font-bold text-gray-600 mb-1 block">時間</label>
-                                            <input type="time" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:bg-white focus:ring-2 ring-blue-200 outline-none transition" value={isEditingEvent.time} onChange={e => setIsEditingEvent({...isEditingEvent, time: e.target.value})} />
-                                        </div>
-                                        <div className="col-span-2">
-                                            <label className="text-sm font-bold text-gray-600 mb-1 block">名稱</label>
-                                            <input type="text" placeholder="行程名稱" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:bg-white focus:ring-2 ring-blue-200 outline-none transition" value={isEditingEvent.title} onChange={e => setIsEditingEvent({...isEditingEvent, title: e.target.value})} />
-                                        </div>
+                                    <div>
+                                        <label className="text-sm font-bold text-gray-600 mb-1 block">名稱</label>
+                                        <input type="text" placeholder="行程名稱" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:bg-white focus:ring-2 ring-blue-200 outline-none transition" value={isEditingEvent.title} onChange={e => setIsEditingEvent({...isEditingEvent, title: e.target.value})} />
                                     </div>
                                     
                                     <div>
                                         <label className="text-sm font-bold text-gray-600 mb-1 block">地點</label>
                                         <div className="relative">
                                             <Icon name="map-pin" size={18} className="absolute left-3 top-3 text-gray-400"/>
-                                            <input type="text" placeholder="搜尋地點或輸入名稱" className="w-full pl-10 bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:bg-white focus:ring-2 ring-blue-200 outline-none transition" value={isEditingEvent.location} onChange={e => setIsEditingEvent({...isEditingEvent, location: e.target.value})} />
+                                            <input type="text" placeholder="搜尋地點或輸入名稱" className="w-full pl-10 bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:bg-white focus:ring-2 ring-blue-200 outline-none transition" value={isEditingEvent.location || ''} onChange={e => setIsEditingEvent({...isEditingEvent, location: e.target.value})} />
                                         </div>
                                     </div>
 
                                     <div>
                                         <label className="text-sm font-bold text-gray-600 mb-1 block">地圖連結 (選填)</label>
-                                        <input type="text" placeholder="貼上 Google Maps URL" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:bg-white focus:ring-2 ring-blue-200 outline-none transition text-sm" value={isEditingEvent.mapUrl} onChange={e => setIsEditingEvent({...isEditingEvent, mapUrl: e.target.value})} />
+                                        <input type="text" placeholder="貼上 Google Maps URL" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:bg-white focus:ring-2 ring-blue-200 outline-none transition text-sm" value={isEditingEvent.mapUrl || ''} onChange={e => setIsEditingEvent({...isEditingEvent, mapUrl: e.target.value})} />
                                     </div>
 
                                     <div>
-                                        <label className="text-sm font-bold text-gray-600 mb-1 block">備註</label>
-                                        <textarea placeholder="例如: 門票 500 yen" className="w-full h-24 bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:bg-white focus:ring-2 ring-blue-200 outline-none transition resize-none" value={isEditingEvent.note} onChange={e => setIsEditingEvent({...isEditingEvent, note: e.target.value})}></textarea>
+                                        <label className="text-sm font-bold text-gray-600 mb-1 block">備註 (包含特定時間、車程)</label>
+                                        <textarea placeholder="例如: 搭乘 08:10 班機 / 車程大約40分鐘" className="w-full h-24 bg-gray-50 border border-gray-200 rounded-lg p-2.5 focus:bg-white focus:ring-2 ring-blue-200 outline-none transition resize-none" value={isEditingEvent.note || ''} onChange={e => setIsEditingEvent({...isEditingEvent, note: e.target.value})}></textarea>
                                     </div>
                                 </div>
 
@@ -440,7 +566,7 @@
             );
         };
 
-        // --- 2. Map Navigation View (Grid on Desktop) ---
+        // --- 2. Map Navigation View ---
         const MapView = ({ events }) => {
             const validEvents = events.filter(e => e.location || e.mapUrl);
             
@@ -462,7 +588,7 @@
                                         <div className="min-w-0 pr-2">
                                             <div className="font-bold text-gray-800 text-lg truncate mb-1 group-hover:text-blue-700">{e.title}</div>
                                             <div className="text-sm text-gray-500 truncate flex items-center gap-1">
-                                                <Icon name="map-pin" size={14} className="flex-shrink-0"/> 
+                                                <Icon name="map-pin" size={14} className="flex-shrink-0 text-red-400"/> 
                                                 <span className="truncate">{e.location}</span>
                                             </div>
                                         </div>
@@ -478,12 +604,11 @@
             );
         };
 
-        // --- 3. Money View (Responsive Split View) ---
+        // --- 3. Money View ---
         const MoneyView = ({ travelers, expenses, setExpenses, currency, setCurrency }) => {
-            const [viewMode, setViewMode] = useState('list'); // list, add, settle, report
+            const [viewMode, setViewMode] = useState('list');
             const [newExpense, setNewExpense] = useState(null);
 
-            // Calculation Logic (Same as before)
             const report = useMemo(() => {
                 let balances = {};
                 travelers.forEach(t => balances[t] = 0);
@@ -495,9 +620,9 @@
                     const amount = parseFloat(exp.amount);
                     if(isNaN(amount)) return;
                     totalSpent += amount;
-                    balances[exp.payer] += amount;
+                    if(balances[exp.payer] !== undefined) balances[exp.payer] += amount;
                     Object.entries(exp.splits).forEach(([person, splitAmount]) => {
-                        balances[person] -= parseFloat(splitAmount);
+                        if(balances[person] !== undefined) balances[person] -= parseFloat(splitAmount);
                     });
                 });
 
@@ -591,15 +716,18 @@
                 const total = parseFloat(exp.amount) || 0;
                 const avg = total / travelers.length;
                 const isEqual = values.every(v => Math.abs(v - avg) < 1.0);
+                
+                let currentSplits = {...exp.splits};
+                travelers.forEach(t => { if(currentSplits[t] === undefined) currentSplits[t] = 0; });
+
                 setNewExpense({
                     ...exp, 
                     splitType: isEqual ? 'equal' : 'custom',
-                    splits: {...exp.splits} 
+                    splits: currentSplits 
                 });
                 setViewMode('add');
             };
 
-            // Modal/View Logic
             if (viewMode === 'add') {
                 const currentSplitSum = Object.values(newExpense.splits).reduce((a, b) => a + parseFloat(b || 0), 0);
                 const remaining = parseFloat(newExpense.amount || 0) - currentSplitSum;
@@ -653,7 +781,7 @@
                                                             <span className="font-medium text-gray-700">{t}</span>
                                                             <input type="number" 
                                                                 className="w-24 bg-gray-50 border-transparent rounded p-1 text-right font-mono focus:bg-white focus:ring-2 ring-blue-100 outline-none" 
-                                                                value={newExpense.splits[t]} 
+                                                                value={newExpense.splits[t] || ''} 
                                                                 onChange={(e) => setNewExpense({...newExpense, splits: {...newExpense.splits, [t]: e.target.value}})}
                                                             />
                                                         </div>
@@ -697,7 +825,6 @@
                     </div>
 
                     <div className="grid md:grid-cols-12 gap-6 items-start">
-                        {/* Left Column: Report Card (Sticky on desktop) */}
                         <div className="md:col-span-5 lg:col-span-4 space-y-6 md:sticky md:top-0">
                             <div className="bg-gradient-to-br from-blue-600 to-cyan-500 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
                                 <div className="absolute top-0 right-0 p-3 opacity-10"><Icon name="wallet" size={100}/></div>
@@ -738,7 +865,6 @@
                             </div>
                         </div>
 
-                        {/* Right Column: Expense List */}
                         <div className="md:col-span-7 lg:col-span-8 space-y-4">
                             <h3 className="font-bold text-gray-700 md:hidden">記帳紀錄</h3>
                             {Object.entries(expenses.reduce((acc, curr) => {
@@ -799,7 +925,7 @@
             );
         };
 
-        // --- 4. Tools View (Responsive Grid) ---
+        // --- 4. Tools View ---
         const ToolsView = ({ checklist, setChecklist, memo, setMemo }) => {
             const toggleCheck = (id) => {
                 setChecklist(checklist.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
@@ -818,7 +944,6 @@
 
             return (
                 <div className="p-4 md:p-6 space-y-6 md:space-y-0 md:grid md:grid-cols-2 md:gap-8 h-full">
-                    {/* Checklist */}
                     <div className="flex flex-col h-full">
                         <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2"><Icon name="check-square" className="text-blue-500"/> 行前準備清單</h2>
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex-1 flex flex-col">
@@ -845,7 +970,6 @@
                         </div>
                     </div>
 
-                    {/* Memo */}
                     <div className="flex flex-col h-full">
                         <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2"><Icon name="file-text" className="text-yellow-500"/> 個人備忘錄</h2>
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-1 flex-1 flex flex-col h-[400px] md:h-auto">
@@ -865,7 +989,7 @@
             );
         };
 
-        // --- 5. Info View (Responsive Grid) ---
+        // --- 5. Info View ---
         const InfoView = () => {
             return (
                 <div className="p-4 md:p-8 space-y-8 max-w-4xl mx-auto">
@@ -919,7 +1043,7 @@
         };
 
         // --- 6. Settings View ---
-        const SettingsView = ({ travelers, setTravelers, setExpenses }) => {
+        const SettingsView = ({ travelers, setTravelers, setExpenses, resetToImport, days, events }) => {
             const [newName, setNewName] = useState('');
 
             const addTraveler = () => {
@@ -942,6 +1066,28 @@
                     window.location.reload();
                 }
             }
+
+            const exportToExcelClipboard = () => {
+                // Removed Time column
+                let text = "日期\t順序\t名稱\t地點\t備註\n";
+                
+                days.forEach(day => {
+                    const dayEvents = events.filter(e => e.dayId === day.id).sort((a,b) => (a.order || 0) - (b.order || 0));
+                    if (dayEvents.length === 0) {
+                        text += `${day.date}\t-\t(無行程)\t-\t${day.note || ''}\n`;
+                    } else {
+                        dayEvents.forEach((e, idx) => {
+                            text += `${day.date}\t${idx + 1}\t${e.title}\t${e.location || ''}\t${e.note || ''}\n`;
+                        });
+                    }
+                });
+
+                navigator.clipboard.writeText(text).then(() => {
+                    alert("行程已複製！\n請開啟 Google Sheet 或 Excel，按下 Ctrl+V 貼上即可。");
+                }, (err) => {
+                    alert("複製失敗，請手動複製: " + err);
+                });
+            };
 
             return (
                 <div className="p-4 md:p-8 space-y-8 max-w-3xl mx-auto">
@@ -976,6 +1122,25 @@
                         </div>
                     </div>
 
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 md:p-8 space-y-4">
+                         <div>
+                            <h3 className="font-bold text-xl text-gray-800 mb-2 flex items-center gap-2"><Icon name="table" size={20}/> 資料匯出與匯入</h3>
+                            <p className="text-gray-500 text-sm">管理行程資料的備份與還原。</p>
+                        </div>
+
+                         <button onClick={exportToExcelClipboard} className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-green-50 border border-green-200 text-green-700 font-bold rounded-xl hover:bg-green-100 hover:border-green-300 transition-all shadow-sm group">
+                            <Icon name="copy" size={20} className="group-hover:scale-110 transition-transform"/>
+                            匯出行程至 Excel / Google Sheet
+                        </button>
+                        
+                        <div className="pt-4 border-t border-gray-100">
+                             <p className="text-gray-500 text-sm mb-3">如果畫面行程沒有自動更新，請點擊下方按鈕強制載入我們為您設定的無時間序行程。</p>
+                            <button onClick={resetToImport} className="w-full md:w-auto px-6 py-3 bg-white border border-blue-200 text-blue-600 font-bold rounded-lg hover:bg-blue-50 transition-all shadow-sm">
+                                重新載入專屬預設行程 (無時間序版)
+                            </button>
+                        </div>
+                    </div>
+
                     <div className="bg-red-50 rounded-2xl shadow-sm border border-red-100 p-6 md:p-8">
                         <h3 className="font-bold text-red-700 mb-2 flex items-center gap-2"><Icon name="alert-octagon" size={20}/> 危險區域</h3>
                         <p className="text-red-600/80 text-sm mb-4">清除所有資料將無法復原，請謹慎操作。</p>
@@ -985,7 +1150,7 @@
                     </div>
                     
                     <div className="text-center text-xs text-gray-400 mt-8">
-                        沖繩旅遊小幫手 v1.1 <br/>
+                        沖繩旅遊小幫手 專屬行程版 (無時間序)<br/>
                         資料儲存於本機瀏覽器 (localStorage)
                     </div>
                 </div>
