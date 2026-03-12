@@ -165,11 +165,8 @@
             const [activeTab, setActiveTab] = useState('itinerary');
             
             // Data States
-            const [travelers, setTravelers] = useState(['我', '旅伴A']);
             const [days, setDays] = useState(IMPORTED_DAYS); 
             const [events, setEvents] = useState(IMPORTED_EVENTS); 
-            const [expenses, setExpenses] = useState([]); 
-            const [currency, setCurrency] = useState({ rate: 0.21, symbol: 'JPY' });
             const [checklist, setChecklist] = useState(DEFAULT_CHECKLIST);
             const [memo, setMemo] = useState(INITIAL_MEMO);
             
@@ -183,35 +180,28 @@
                         setter(defaultVal);
                     }
                 };
-                load('travelers', setTravelers, ['我', '旅伴A']);
                 load('days', setDays, IMPORTED_DAYS);
                 load('events', setEvents, IMPORTED_EVENTS);
-                load('expenses', setExpenses, []);
-                load('currency', setCurrency, { rate: 0.21, symbol: 'JPY' });
                 load('checklist', setChecklist, DEFAULT_CHECKLIST);
                 load('memo', setMemo, INITIAL_MEMO);
             }, []);
 
             useEffect(() => {
                 const save = (key, data) => localStorage.setItem(`okinawa_notime_${key}`, JSON.stringify(data));
-                save('travelers', travelers);
                 save('days', days);
                 save('events', events);
-                save('expenses', expenses);
-                save('currency', currency);
                 save('checklist', checklist);
                 save('memo', memo);
-            }, [travelers, days, events, expenses, currency, checklist, memo]);
+            }, [days, events, checklist, memo]);
 
             // --- Component Rendering ---
             const renderContent = () => {
                 switch (activeTab) {
                     case 'itinerary': return <ItineraryView days={days} setDays={setDays} events={events} setEvents={setEvents} />;
                     case 'map': return <MapView events={events} />;
-                    case 'money': return <MoneyView travelers={travelers} expenses={expenses} setExpenses={setExpenses} currency={currency} setCurrency={setCurrency} />;
                     case 'tools': return <ToolsView checklist={checklist} setChecklist={setChecklist} memo={memo} setMemo={setMemo} />;
                     case 'info': return <InfoView />;
-                    case 'settings': return <SettingsView travelers={travelers} setTravelers={setTravelers} setExpenses={setExpenses} resetToImport={resetToImport} days={days} events={events} />;
+                    case 'settings': return <SettingsView resetToImport={resetToImport} days={days} events={events} />;
                     default: return <ItineraryView />;
                 }
             };
@@ -265,13 +255,12 @@
                         <nav className="flex-1 px-4 space-y-2">
                             <NavItem id="itinerary" icon="list" label="行程規劃" />
                             <NavItem id="map" icon="map" label="地圖導航" />
-                            <NavItem id="money" icon="wallet" label="記帳分帳" />
                             <NavItem id="tools" icon="clipboard-list" label="清單備忘" />
                             <NavItem id="info" icon="info" label="實用資訊" />
                             <NavItem id="settings" icon="settings" label="設定管理" />
                         </nav>
                         <div className="p-4 border-t border-gray-100 text-xs text-gray-400 text-center">
-                            專屬行程版 v3.0 (無時間序)
+                            專屬行程版 v3.1 (無記帳)
                         </div>
                     </aside>
 
@@ -295,7 +284,6 @@
                         <nav className="md:hidden bg-white border-t border-gray-200 flex justify-around p-2 pb-safe flex-shrink-0 z-10">
                             <MobileNavItem id="itinerary" icon="list" label="行程" />
                             <MobileNavItem id="map" icon="map" label="導航" />
-                            <MobileNavItem id="money" icon="wallet" label="記帳" />
                             <MobileNavItem id="tools" icon="clipboard-list" label="清單" />
                             <MobileNavItem id="info" icon="info" label="資訊" />
                             <MobileNavItem id="settings" icon="settings" label="設定" />
@@ -604,328 +592,7 @@
             );
         };
 
-        // --- 3. Money View ---
-        const MoneyView = ({ travelers, expenses, setExpenses, currency, setCurrency }) => {
-            const [viewMode, setViewMode] = useState('list');
-            const [newExpense, setNewExpense] = useState(null);
-
-            const report = useMemo(() => {
-                let balances = {};
-                travelers.forEach(t => balances[t] = 0);
-                
-                let totalSpent = 0;
-                let activeExpenses = expenses.filter(e => !e.settled);
-
-                activeExpenses.forEach(exp => {
-                    const amount = parseFloat(exp.amount);
-                    if(isNaN(amount)) return;
-                    totalSpent += amount;
-                    if(balances[exp.payer] !== undefined) balances[exp.payer] += amount;
-                    Object.entries(exp.splits).forEach(([person, splitAmount]) => {
-                        if(balances[person] !== undefined) balances[person] -= parseFloat(splitAmount);
-                    });
-                });
-
-                let debtors = [];
-                let creditors = [];
-                Object.entries(balances).forEach(([person, amount]) => {
-                    if (amount < -0.1) debtors.push({ person, amount });
-                    if (amount > 0.1) creditors.push({ person, amount });
-                });
-
-                debtors.sort((a, b) => a.amount - b.amount);
-                creditors.sort((a, b) => b.amount - a.amount);
-
-                let transfers = [];
-                let i = 0; let j = 0;
-                while (i < debtors.length && j < creditors.length) {
-                    let debtor = debtors[i];
-                    let creditor = creditors[j];
-                    let amount = Math.min(Math.abs(debtor.amount), creditor.amount);
-                    transfers.push({
-                        from: debtor.person,
-                        to: creditor.person,
-                        amount: amount.toFixed(0)
-                    });
-                    debtor.amount += amount;
-                    creditor.amount -= amount;
-                    if (Math.abs(debtor.amount) < 0.1) i++;
-                    if (creditor.amount < 0.1) j++;
-                }
-                return { totalSpent, transfers, balances };
-            }, [expenses, travelers]);
-
-            const initAddExpense = () => {
-                const initialSplits = {};
-                travelers.forEach(t => initialSplits[t] = 0); 
-                setNewExpense({
-                    id: generateId(),
-                    date: new Date().toISOString().split('T')[0],
-                    title: '',
-                    amount: '',
-                    payer: travelers[0],
-                    splits: initialSplits,
-                    splitType: 'equal', 
-                    settled: false
-                });
-                setViewMode('add');
-            };
-
-            const saveExpense = () => {
-                if (!newExpense.title || !newExpense.amount) return alert("請輸入項目和金額");
-                const total = parseFloat(newExpense.amount);
-                let finalSplits = {...newExpense.splits};
-                if (newExpense.splitType === 'equal') {
-                    const share = total / travelers.length;
-                    travelers.forEach(t => finalSplits[t] = share);
-                } else {
-                    const currentSum = Object.values(finalSplits).reduce((a, b) => a + parseFloat(b || 0), 0);
-                    if (Math.abs(currentSum - total) > 1) {
-                        return alert(`金額錯誤！自訂分攤總和 (${currentSum}) 與 總金額 (${total}) 不符。`);
-                    }
-                }
-                const expenseToSave = { ...newExpense, splits: finalSplits, amount: total };
-                const existingIndex = expenses.findIndex(e => e.id === expenseToSave.id);
-                if (existingIndex >= 0) {
-                    const updated = [...expenses];
-                    updated[existingIndex] = expenseToSave;
-                    setExpenses(updated);
-                } else {
-                    setExpenses([expenseToSave, ...expenses]);
-                }
-                setViewMode('list');
-            };
-
-            const toggleSettle = (date) => {
-                if(confirm(`確定將 ${date} 以前(含)的所有未結算項目標記為已結算？`)) {
-                    setExpenses(expenses.map(e => {
-                        if (e.date <= date && !e.settled) return { ...e, settled: true };
-                        return e;
-                    }));
-                }
-            };
-            
-            const deleteExpense = (id) => {
-                if(confirm("確定要刪除此筆記帳紀錄嗎？")) {
-                    setExpenses(prev => prev.filter(e => e.id !== id));
-                }
-            };
-
-            const editExpense = (exp) => {
-                const values = Object.values(exp.splits).map(v => parseFloat(v) || 0);
-                const total = parseFloat(exp.amount) || 0;
-                const avg = total / travelers.length;
-                const isEqual = values.every(v => Math.abs(v - avg) < 1.0);
-                
-                let currentSplits = {...exp.splits};
-                travelers.forEach(t => { if(currentSplits[t] === undefined) currentSplits[t] = 0; });
-
-                setNewExpense({
-                    ...exp, 
-                    splitType: isEqual ? 'equal' : 'custom',
-                    splits: currentSplits 
-                });
-                setViewMode('add');
-            };
-
-            if (viewMode === 'add') {
-                const currentSplitSum = Object.values(newExpense.splits).reduce((a, b) => a + parseFloat(b || 0), 0);
-                const remaining = parseFloat(newExpense.amount || 0) - currentSplitSum;
-
-                return (
-                    <div className="fixed inset-0 z-50 bg-white md:bg-black/50 md:flex md:items-center md:justify-center p-0 md:p-4">
-                        <div className="h-full w-full md:h-auto md:max-w-2xl bg-white md:rounded-2xl flex flex-col shadow-2xl overflow-hidden animate-slide-up">
-                            <div className="flex items-center p-4 border-b border-gray-100 bg-gray-50/50">
-                                <button onClick={() => setViewMode('list')} className="mr-3 text-gray-500 hover:text-gray-800"><Icon name="arrow-left"/></button>
-                                <h2 className="text-xl font-bold">{newExpense.id && expenses.find(e=>e.id === newExpense.id) ? '編輯記帳' : '新增記帳'}</h2>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="text-sm font-bold text-gray-500 mb-1 block">日期</label>
-                                            <input type="date" className="w-full border rounded-lg p-3 bg-gray-50 focus:bg-white focus:ring-2 ring-blue-100 outline-none transition" value={newExpense.date} onChange={e => setNewExpense({...newExpense, date: e.target.value})} />
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-bold text-gray-500 mb-1 block">項目名稱</label>
-                                            <input type="text" placeholder="例如: 晚餐" className="w-full border rounded-lg p-3 bg-gray-50 focus:bg-white focus:ring-2 ring-blue-100 outline-none transition text-lg" value={newExpense.title} onChange={e => setNewExpense({...newExpense, title: e.target.value})} />
-                                        </div>
-                                        <div className="flex gap-4">
-                                            <div className="flex-1">
-                                                <label className="text-sm font-bold text-gray-500 mb-1 block">總金額 ({currency.symbol})</label>
-                                                <input type="number" placeholder="0" className="w-full border rounded-lg p-3 bg-gray-50 focus:bg-white focus:ring-2 ring-blue-100 outline-none transition text-2xl font-bold text-blue-600" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})} />
-                                            </div>
-                                            <div className="w-2/5">
-                                                <label className="text-sm font-bold text-gray-500 mb-1 block">付款人</label>
-                                                <select className="w-full border rounded-lg p-3 h-[58px] bg-gray-50 focus:bg-white focus:ring-2 ring-blue-100 outline-none transition" value={newExpense.payer} onChange={e => setNewExpense({...newExpense, payer: e.target.value})}>
-                                                    {travelers.map(t => <option key={t} value={t}>{t}</option>)}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 h-fit">
-                                        <div className="flex justify-between mb-4">
-                                            <label className="text-sm font-bold text-gray-700">分攤方式</label>
-                                            <div className="flex bg-gray-200 rounded-lg p-1 text-xs">
-                                                <button onClick={() => setNewExpense({...newExpense, splitType: 'equal'})} className={`px-3 py-1.5 rounded-md transition-all font-medium ${newExpense.splitType === 'equal' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>均分</button>
-                                                <button onClick={() => setNewExpense({...newExpense, splitType: 'custom'})} className={`px-3 py-1.5 rounded-md transition-all font-medium ${newExpense.splitType === 'custom' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>自訂</button>
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="space-y-2">
-                                            {newExpense.splitType === 'custom' ? (
-                                                <>
-                                                    {travelers.map(t => (
-                                                        <div key={t} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-gray-200">
-                                                            <span className="font-medium text-gray-700">{t}</span>
-                                                            <input type="number" 
-                                                                className="w-24 bg-gray-50 border-transparent rounded p-1 text-right font-mono focus:bg-white focus:ring-2 ring-blue-100 outline-none" 
-                                                                value={newExpense.splits[t] || ''} 
-                                                                onChange={(e) => setNewExpense({...newExpense, splits: {...newExpense.splits, [t]: e.target.value}})}
-                                                            />
-                                                        </div>
-                                                    ))}
-                                                    <div className={`text-xs text-right mt-3 font-bold ${Math.abs(remaining) > 1 ? 'text-red-500' : 'text-green-500'}`}>
-                                                        {Math.abs(remaining) > 1 
-                                                            ? `⚠️ 還有 ${remaining.toFixed(0)} 未分配`
-                                                            : '✅ 金額分配正確'}
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <div className="text-center py-6 text-gray-500 bg-white rounded-lg border border-dashed border-gray-300">
-                                                    <div className="text-xs mb-1">每人分攤</div>
-                                                    <div className="font-bold text-3xl text-blue-600 font-mono">
-                                                        {newExpense.amount ? (newExpense.amount / travelers.length).toFixed(0) : 0}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="p-4 border-t border-gray-100 bg-gray-50/50">
-                                <button onClick={saveExpense} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-blue-200 active:scale-[0.98] transition-all">儲存紀錄</button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
-            return (
-                <div className="p-4 md:p-6 pb-20 md:pb-6 h-full flex flex-col">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-2xl font-bold text-gray-800 hidden md:block">財務管家</h2>
-                        <div className="flex gap-2 text-sm ml-auto">
-                             <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-sm">
-                                <span className="text-xs text-gray-500 font-medium">匯率 1 :</span>
-                                <input type="number" className="w-16 text-center border-b border-gray-300 focus:border-blue-500 outline-none font-mono" value={currency.rate} step="0.01" onChange={(e) => setCurrency({...currency, rate: parseFloat(e.target.value)})} />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="grid md:grid-cols-12 gap-6 items-start">
-                        <div className="md:col-span-5 lg:col-span-4 space-y-6 md:sticky md:top-0">
-                            <div className="bg-gradient-to-br from-blue-600 to-cyan-500 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
-                                <div className="absolute top-0 right-0 p-3 opacity-10"><Icon name="wallet" size={100}/></div>
-                                <div className="relative z-10">
-                                    <div className="text-blue-100 text-sm font-medium mb-1">未結算總支出</div>
-                                    <div className="text-4xl font-bold tracking-tight mb-2">¥ {report.totalSpent.toLocaleString()}</div>
-                                    <div className="text-sm text-blue-100 bg-white/20 w-fit px-2 py-1 rounded backdrop-blur-sm">≈ NT$ {(report.totalSpent * currency.rate).toFixed(0)}</div>
-                                    
-                                    <div className="mt-6 pt-6 border-t border-white/20">
-                                        <button onClick={initAddExpense} className="w-full bg-white text-blue-600 px-4 py-3 rounded-xl font-bold shadow-md hover:bg-blue-50 active:scale-95 transition-all flex items-center justify-center gap-2">
-                                            <Icon name="plus" size={20} /> 記一筆
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-                                <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2"><Icon name="refresh-cw" size={18}/> 建議結算</h3>
-                                {report.transfers.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {report.transfers.map((t, idx) => (
-                                            <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                                                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                                                    <span className="bg-white px-2 py-0.5 rounded border border-gray-200">{t.from}</span>
-                                                    <Icon name="arrow-right" size={14} className="text-gray-400"/>
-                                                    <span className="bg-white px-2 py-0.5 rounded border border-gray-200">{t.to}</span>
-                                                </div>
-                                                <div className="text-right">
-                                                    <div className="font-bold text-blue-600 font-mono">¥{t.amount}</div>
-                                                    <div className="text-xs text-gray-400">NT${(t.amount*currency.rate).toFixed(0)}</div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-4 text-gray-400 text-sm bg-gray-50 rounded-lg">目前無人欠款，完美！</div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="md:col-span-7 lg:col-span-8 space-y-4">
-                            <h3 className="font-bold text-gray-700 md:hidden">記帳紀錄</h3>
-                            {Object.entries(expenses.reduce((acc, curr) => {
-                                (acc[curr.date] = acc[curr.date] || []).push(curr);
-                                return acc;
-                            }, {})).sort((a,b) => b[0].localeCompare(a[0])).map(([date, items]) => {
-                                const allSettled = items.every(i => i.settled);
-                                return (
-                                    <div key={date} className={`bg-white rounded-2xl shadow-sm overflow-hidden border transition-all ${allSettled ? 'opacity-60 grayscale border-gray-100' : 'border-gray-200 hover:border-blue-200'}`}>
-                                        <div className="bg-gray-50 px-4 py-3 flex justify-between items-center text-sm border-b border-gray-100">
-                                            <span className="font-bold text-gray-700 flex items-center gap-2">
-                                                <Icon name="calendar" size={14} className="text-gray-400"/> {date}
-                                            </span>
-                                            {!allSettled ? (
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); toggleSettle(date); }} 
-                                                    className="text-xs font-bold text-green-600 bg-green-50 px-3 py-1.5 rounded-full border border-green-200 hover:bg-green-100 transition-colors"
-                                                >
-                                                    結清此日之前
-                                                </button>
-                                            ) : (
-                                                <span className="text-xs font-bold bg-gray-200 text-gray-500 px-3 py-1 rounded-full">已結算</span>
-                                            )}
-                                        </div>
-                                        <div className="divide-y divide-gray-50">
-                                            {items.map(exp => (
-                                                <div key={exp.id} 
-                                                     onClick={() => !exp.settled && editExpense(exp)}
-                                                     className={`p-4 flex justify-between items-center group transition-colors ${!exp.settled ? 'hover:bg-blue-50/50 cursor-pointer' : ''}`}
-                                                >
-                                                    <div className="flex-1">
-                                                        <div className="font-bold text-gray-800 text-base">{exp.title}</div>
-                                                        <div className="text-xs text-gray-500 mt-1 flex items-center gap-2">
-                                                            <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-medium">{exp.payer}</span>
-                                                            <span>先付</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="font-mono font-bold text-gray-700">¥{parseFloat(exp.amount).toLocaleString()}</div>
-                                                        {!exp.settled && (
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); deleteExpense(exp.id); }} 
-                                                                className="text-gray-300 hover:text-red-500 p-2 rounded-full hover:bg-red-50 md:opacity-0 group-hover:opacity-100 transition-all"
-                                                            >
-                                                                <Icon name="trash-2" size={18}/>
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        // --- 4. Tools View ---
+        // --- 3. Tools View (Checklist & Memo) ---
         const ToolsView = ({ checklist, setChecklist, memo, setMemo }) => {
             const toggleCheck = (id) => {
                 setChecklist(checklist.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
@@ -989,7 +656,7 @@
             );
         };
 
-        // --- 5. Info View ---
+        // --- 4. Info View ---
         const InfoView = () => {
             return (
                 <div className="p-4 md:p-8 space-y-8 max-w-4xl mx-auto">
@@ -1042,23 +709,8 @@
             );
         };
 
-        // --- 6. Settings View ---
-        const SettingsView = ({ travelers, setTravelers, setExpenses, resetToImport, days, events }) => {
-            const [newName, setNewName] = useState('');
-
-            const addTraveler = () => {
-                if (newName && !travelers.includes(newName)) {
-                    setTravelers([...travelers, newName]);
-                    setNewName('');
-                }
-            };
-
-            const removeTraveler = (name) => {
-                if (travelers.length <= 1) return alert("至少需要一位旅伴");
-                if (confirm(`刪除旅伴 ${name}？注意：這可能會影響歷史記帳資料顯示。`)) {
-                    setTravelers(travelers.filter(t => t !== name));
-                }
-            };
+        // --- 5. Settings View ---
+        const SettingsView = ({ resetToImport, days, events }) => {
 
             const clearData = () => {
                 if(confirm("警告：這將清除所有 App 資料且無法復原！確定嗎？")) {
@@ -1068,7 +720,6 @@
             }
 
             const exportToExcelClipboard = () => {
-                // Removed Time column
                 let text = "日期\t順序\t名稱\t地點\t備註\n";
                 
                 days.forEach(day => {
@@ -1092,35 +743,6 @@
             return (
                 <div className="p-4 md:p-8 space-y-8 max-w-3xl mx-auto">
                     <h2 className="text-2xl font-bold text-gray-800 hidden md:block border-b pb-4">設定管理</h2>
-
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 md:p-8">
-                        <div className="mb-6">
-                            <h3 className="font-bold text-xl text-gray-800 mb-2">旅伴管理</h3>
-                            <p className="text-gray-500 text-sm">在此新增或移除旅伴，這些成員將會出現在分帳選項中。</p>
-                        </div>
-                        
-                        <div className="flex gap-3 mb-6">
-                            <input 
-                                type="text" 
-                                placeholder="輸入名字..." 
-                                className="border border-gray-300 rounded-lg p-3 flex-1 focus:ring-2 ring-blue-100 outline-none transition"
-                                value={newName}
-                                onChange={e => setNewName(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && addTraveler()}
-                            />
-                            <button onClick={addTraveler} className="bg-blue-600 hover:bg-blue-700 text-white px-6 rounded-lg font-bold transition shadow-sm">新增</button>
-                        </div>
-                        
-                        <div className="flex flex-wrap gap-3">
-                            {travelers.map(t => (
-                                <div key={t} className="bg-blue-50 text-blue-700 px-4 py-2 rounded-full flex items-center gap-3 text-sm font-bold border border-blue-100 shadow-sm">
-                                    <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center text-xs">{t[0]}</div>
-                                    {t}
-                                    <button onClick={() => removeTraveler(t)} className="text-blue-300 hover:text-red-500 transition-colors bg-white rounded-full p-0.5"><Icon name="x" size={14}/></button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
 
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 md:p-8 space-y-4">
                          <div>
@@ -1150,7 +772,7 @@
                     </div>
                     
                     <div className="text-center text-xs text-gray-400 mt-8">
-                        沖繩旅遊小幫手 專屬行程版 (無時間序)<br/>
+                        沖繩旅遊小幫手 專屬行程版 (無記帳)<br/>
                         資料儲存於本機瀏覽器 (localStorage)
                     </div>
                 </div>
